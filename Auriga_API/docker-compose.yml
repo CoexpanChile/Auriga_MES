@@ -1,18 +1,40 @@
 version: '3.8'
 
 services:
+  postgresql:
+    image: postgres:17.5
+    container_name: auriga-postgresql
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_DB=${DATABASE_NAME}
+      - TZ=${DATABASE_TIMEZONE:-UTC}
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   auriga-api:
     image: auriga-api:0.0.01
     container_name: auriga-api
     ports:
       - "${AURIGA_API_PORT}:8081"
+    depends_on:
+      postgresql:
+        condition: service_healthy
     environment:
       - AURIGA_API_PORT=${AURIGA_API_PORT}
       - AURIGA_NAME=${AURIGA_NAME}
       - AURIGA_VERSION=${AURIGA_VERSION}
       - AURIGA_ZAP=${AURIGA_ZAP}
-      - DATABASE_HOST=${DATABASE_HOST}
-      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_HOST=${DATABASE_HOST:-postgresql}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
       - DATABASE_USER=${DATABASE_USER}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD}
       - DATABASE_NAME=${DATABASE_NAME}
@@ -103,6 +125,7 @@ services:
       - WORKERA_API_KEY=${WORKERA_API_KEY}
     restart: unless-stopped
 
-
+volumes:
+  postgresql_data:
 
 # sudo docker compose -f docker-compose.yml up -d

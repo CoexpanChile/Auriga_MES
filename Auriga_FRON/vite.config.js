@@ -8,7 +8,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://192.168.122.211:8081',
+        target: 'http://localhost:8081',
         changeOrigin: true,
         secure: false,
         configure: (proxy, _options) => {
@@ -24,7 +24,7 @@ export default defineConfig({
         },
       },
       '/auth': {
-        target: 'http://192.168.122.211:8081',
+        target: 'http://localhost:8081',
         changeOrigin: true,
         secure: false,
       }
