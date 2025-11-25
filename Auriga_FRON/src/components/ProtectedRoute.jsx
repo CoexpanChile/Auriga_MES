@@ -7,16 +7,38 @@ const ProtectedRoute = ({ children }) => {
   useEffect(() => {
     const verifyAuth = async () => {
       try {
+        console.log('🔍 [ProtectedRoute] Verificando autenticación...')
         const auth = await checkServerAuth()
+        console.log('🔍 [ProtectedRoute] Respuesta de autenticación:', auth)
         setIsAuthenticated(auth.authenticated)
         
         if (!auth.authenticated) {
+          console.warn('⚠️ [ProtectedRoute] No autenticado, redirigiendo a /login')
           window.location.href = '/login'
+        } else {
+          console.log('✅ [ProtectedRoute] Usuario autenticado')
         }
       } catch (error) {
-        console.error('Auth verification failed:', error)
+        // Logging detallado del error
+        console.error('❌ [ProtectedRoute] Error verificando autenticación:', error)
+        console.error('❌ [ProtectedRoute] Tipo de error:', error?.name || 'Unknown')
+        console.error('❌ [ProtectedRoute] Mensaje:', error?.message || 'Error sin mensaje')
+        console.error('❌ [ProtectedRoute] Stack:', error?.stack || 'Sin stack')
+        
+        // Mostrar información completa del error
+        const errorInfo = {
+          name: error?.name || 'Unknown',
+          message: error?.message || 'Error desconocido',
+          stack: error?.stack || 'Sin stack trace',
+          fullError: error
+        };
+        console.error('❌ [ProtectedRoute] Información completa del error:', JSON.stringify(errorInfo, null, 2));
+        
         setIsAuthenticated(false)
+        // Redirigir después de un breve delay para permitir que se vean los logs
+        setTimeout(() => {
         window.location.href = '/login'
+        }, 100)
       }
     }
 

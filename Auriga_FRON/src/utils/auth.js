@@ -1,4 +1,7 @@
 // Utilidades para manejar autenticación y cookies
+// Importar función de limpieza completa desde clearSession.js para evitar duplicación
+import { clearEverything } from './clearSession.js';
+
 const API_BASE_URL = ''; // Usar rutas relativas por el proxy
 
 export const getCookie = (name) => {
@@ -34,42 +37,113 @@ export const getCurrentUser = () => {
 
 export const checkServerAuth = async () => {
   try {
-    const response = await fetch('/api/auth/check', {
+    console.log('🔍 [checkServerAuth] Iniciando verificación de autenticación...')
+    const url = '/api/auth/check'
+    console.log('🔍 [checkServerAuth] URL:', url)
+    console.log('🔍 [checkServerAuth] Credentials disponibles:', document.cookie)
+    
+    const response = await fetch(url, {
       method: 'GET',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
+    }).catch(fetchError => {
+      console.error('❌ [checkServerAuth] Error de red:', fetchError)
+      throw fetchError
     });
 
+    console.log('🔍 [checkServerAuth] Status:', response.status)
+    console.log('🔍 [checkServerAuth] OK:', response.ok)
+    console.log('🔍 [checkServerAuth] Status text:', response.statusText)
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      let errorText = ''
+      try {
+        errorText = await response.text()
+        console.error('❌ [checkServerAuth] Error HTTP:', response.status, errorText)
+      } catch (textError) {
+        console.error('❌ [checkServerAuth] No se pudo leer el texto de error:', textError)
+      }
+      // No lanzar error, solo retornar no autenticado
+      return { authenticated: false, message: `HTTP ${response.status}` };
     }
 
     const data = await response.json();
+    console.log('✅ [checkServerAuth] Datos recibidos:', data)
     return data;
   } catch (error) {
-    console.error('Error checking server auth:', error);
-    return { authenticated: false };
+    // Logging detallado del error
+    console.error('❌ [checkServerAuth] Error completo:', error);
+    console.error('❌ [checkServerAuth] Tipo de error:', error.name);
+    console.error('❌ [checkServerAuth] Mensaje:', error.message);
+    console.error('❌ [checkServerAuth] Causa:', error.cause);
+    if (error.stack) {
+      console.error('❌ [checkServerAuth] Stack:', error.stack);
+    }
+    
+    // Mostrar error completo en consola para debugging
+    const errorInfo = {
+      name: error.name,
+      message: error.message,
+      cause: error.cause,
+      stack: error.stack
+    };
+    console.error('❌ [checkServerAuth] Información completa del error:', JSON.stringify(errorInfo, null, 2));
+    
+    // Retornar no autenticado con información del error
+    return { 
+      authenticated: false, 
+      error: error.message || 'Error desconocido',
+      errorDetails: errorInfo
+    };
   }
 };
 
 export const logout = async () => {
   try {
-    await fetch('/auth/logout', {
+    // Llamar al endpoint de logout del servidor
+    const response = await fetch('/auth/logout', {
       method: 'POST',
-      credentials: 'include'
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }).catch(error => {
+      // Continuar con la limpieza local incluso si el servidor falla
+      console.warn('Logout server call failed, continuing with local cleanup:', error);
+      return null;
     });
+
+    // Limpiar cookies, storage y cache del lado del cliente ANTES de redirigir
+    await clearEverything();
+
+    // Si el servidor retornó una URL de logout de Authentik, redirigir allí
+    if (response && response.ok) {
+      try {
+        const data = await response.json();
+        if (data.logout_url && data.redirect) {
+          // Redirigir a Authentik para cerrar sesión allí también
+          console.log('Redirecting to Authentik logout:', data.logout_url);
+          window.location.href = data.logout_url;
+          return; // No continuar con el código siguiente
+        }
+      } catch (jsonError) {
+        console.warn('Failed to parse logout response, redirecting to login:', jsonError);
+      }
+    }
+
+    // Si no hay URL de logout de Authentik, redirigir directamente al login
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   } catch (error) {
     console.error('Logout error:', error);
-  } finally {
-    // Limpiar cookies del lado del cliente
-    document.cookie = 'user_data=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    document.cookie = 'session_active=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    
-    // Redirigir al login
-    window.location.href = '/login';
+    // En caso de error, limpiar localmente y redirigir
+    await clearEverything();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   }
 };
 
