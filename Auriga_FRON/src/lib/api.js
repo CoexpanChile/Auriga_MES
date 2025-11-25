@@ -8,7 +8,7 @@ export const api = {
         ...options,
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
+          // No incluir Content-Type en GET para evitar problemas de CORS
           ...options.headers,
         },
         credentials: 'include', // Incluir cookies
@@ -82,7 +82,7 @@ export const api = {
         ...options,
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json',
+          // No incluir Content-Type en DELETE para evitar problemas de CORS
           ...options.headers,
         },
         credentials: 'include',
@@ -102,6 +102,8 @@ export const api = {
 };
 
 export default api;
+
+
 
 
 

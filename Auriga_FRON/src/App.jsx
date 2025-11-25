@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { LanguageProvider } from './context/LanguageContext'
+import { TenantProvider } from './context/TenantContext'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import PermissionRoute from './components/PermissionRoute.jsx'
 import Layout from './components/Layout.jsx'
@@ -110,13 +111,14 @@ function App() {
   }
   
   return (
-    <LanguageProvider>
-      <Router
-        future={{
-          v7_startTransition: true,
-          v7_relativeSplatPath: true
-        }}
-      >
+    <TenantProvider>
+      <LanguageProvider>
+        <Router
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true
+          }}
+        >
       <div className="App">
         <Routes>
           {/* Páginas públicas sin Layout */}
@@ -719,8 +721,9 @@ function App() {
           </Route>
         </Routes>
       </div>
-      </Router>
-    </LanguageProvider>
+        </Router>
+      </LanguageProvider>
+    </TenantProvider>
   );
 }
 
