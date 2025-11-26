@@ -60,11 +60,9 @@ func New(p Params) Result {
 } */
 
 type msAssetTree struct {
-	ID                uint     `json:"id"`
-	ParentID          *uint    `json:"parent_id"`
-	Code              string   `json:"code"`
-	Location          string   `json:"location"`
-	HierarchicalLevel []string `json:"hierarchical_level"`
+	ID       uint
+	ParentID *uint
+	Code     string
 }
 
 func (s *service) AssetInfo(id uint) (*msAssetTree, error) {
@@ -73,18 +71,10 @@ func (s *service) AssetInfo(id uint) (*msAssetTree, error) {
 		log.Println("Error service aqui:", err)
 		return nil, err
 	}
-	var hierarchicalLevel []string
-	if rData.HierarchicalLevel != nil {
-		hierarchicalLevel = rData.HierarchicalLevel
-	} else {
-		hierarchicalLevel = []string{}
-	}
 	data := &msAssetTree{
-		ID:                rData.ID,
-		ParentID:          rData.ParentID,
-		Code:              rData.Code,
-		Location:          rData.Location,
-		HierarchicalLevel: hierarchicalLevel,
+		ID:       rData.ID,
+		ParentID: rData.ParentID,
+		Code:     rData.Code,
 	}
 	return data, nil
 }
@@ -207,19 +197,10 @@ func (s *service) AssetList(ctx context.Context) ([]msAssetTree, error) {
 
 	// Transformación de datos
 	for _, p := range rData {
-		var hierarchicalLevel []string
-		if p.HierarchicalLevel != nil {
-			hierarchicalLevel = p.HierarchicalLevel
-		} else {
-			hierarchicalLevel = []string{}
-		}
-		
 		data = append(data, msAssetTree{
-			ID:                p.ID,
-			ParentID:          p.ParentID,
-			Code:              p.Code,
-			Location:          p.Location,
-			HierarchicalLevel: hierarchicalLevel,
+			ID:       p.ID,
+			ParentID: p.ParentID,
+			Code:     p.Code,
 		})
 	}
 
