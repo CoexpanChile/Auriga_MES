@@ -1,15 +1,44 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Factory, CheckCircle, Wrench, AlertCircle, Users, RefreshCw } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
 import { useLanguage } from '../context/LanguageContext';
 import { logout } from '../utils/auth';
+import { statsService } from '../services/statsService';
 
 const Dashboard = () => {
   const auth = useAuth();
   const { isLoading, error } = auth;
   const { permissions, checkPermission, checkFactoryAccess, checkRole, checkGroup } = usePermissions();
   const { t } = useLanguage();
+  
+  // Obtener fábrica seleccionada desde localStorage (sin prefijo en URL)
+  const selectedFactory = useMemo(() => {
+    const saved = localStorage.getItem('selectedFactory');
+    // Si es 'CX' o null, significa vista global
+    return saved && saved !== 'CX' ? saved : null;
+  }, []);
+  
+  const [stats, setStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+  
+  // Cargar estadísticas
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        setLoadingStats(true);
+        const generalStats = await statsService.getGeneralStats(selectedFactory);
+        setStats(generalStats);
+      } catch (err) {
+        console.error('Error loading stats:', err);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+    
+    loadStats();
+  }, [selectedFactory]);
 
 
   // Secciones organizadas por categoría
@@ -334,12 +363,6 @@ const Dashboard = () => {
         available: true,
       });
       availableSections.administration.push({
-        path: '/roles',
-        label: t.navigation?.roles || 'Roles',
-        icon: '👔',
-        available: true,
-      });
-      availableSections.administration.push({
         path: '/roles-permisos',
         label: t.navigation?.rolesPermissions || 'Roles y Permisos',
         icon: '🔑',
@@ -494,6 +517,114 @@ const Dashboard = () => {
                 </p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Estadísticas de Producción */}
+      {!loadingStats && stats && (
+        <div style={{ marginBottom: '30px' }}>
+          <h2 style={{
+            fontSize: '20px',
+            marginBottom: '15px',
+            color: '#333',
+            paddingBottom: '10px',
+            borderBottom: '2px solid #e0e0e0'
+          }}>
+            {t.dashboard?.statistics || 'Estadísticas'}
+            {selectedFactory && ` - ${selectedFactory}`}
+          </h2>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+            gap: '15px',
+            marginBottom: '20px'
+          }}>
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <Factory size={24} color="#3b82f6" />
+                <h3 style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                  {t.dashboard?.totalLines || 'Líneas Totales'}
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '28px', fontWeight: 'bold', color: '#333' }}>
+                {stats?.productionLines?.total || 0}
+              </p>
+            </div>
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <CheckCircle size={24} color="#10b981" />
+                <h3 style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                  {t.dashboard?.operationalLines || 'Líneas Operativas'}
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '28px', fontWeight: 'bold', color: '#333' }}>
+                {stats?.productionLines?.operativas || 0}
+              </p>
+            </div>
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <Wrench size={24} color="#f59e0b" />
+                <h3 style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                  {t.dashboard?.maintenanceLines || 'En Mantenimiento'}
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '28px', fontWeight: 'bold', color: '#333' }}>
+                {stats?.productionLines?.mantenimiento || 0}
+              </p>
+            </div>
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <AlertCircle size={24} color="#ef4444" />
+                <h3 style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                  {t.dashboard?.unavailableLines || 'Indisponibles'}
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '28px', fontWeight: 'bold', color: '#333' }}>
+                {stats?.productionLines?.indisponibles || 0}
+              </p>
+            </div>
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <Users size={24} color="#8b5cf6" />
+                <h3 style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                  {t.dashboard?.totalEmployees || 'Total Empleados'}
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '28px', fontWeight: 'bold', color: '#333' }}>
+                {stats?.employees?.total || 0}
+              </p>
+            </div>
           </div>
         </div>
       )}

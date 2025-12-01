@@ -37,7 +37,7 @@ ENTRYPOINT ["./app"]
 # sudo docker load -i auriga-api_0.0.01.tar
 
 # Copiar certificado en VM
-#        scp AurigaPassword.pem jr@192.168.122.211:/home/jr/projects/Auriga_API
+#        scp AurigaPassword.pem jr@18.213.58.26:/home/jr/projects/Auriga_API
 
 # Carga al servidor
 ##  En el PC de desarrollo

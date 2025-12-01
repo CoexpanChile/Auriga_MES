@@ -6,14 +6,15 @@ import (
 	"log"
 
 	"github.com/remrafvil/Auriga_API/config"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rAssets"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rEvents"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rInfluxQuery"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rModels"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rOthers"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rProducts"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rProducts/rP_CXC_L8"
-	"github.com/remrafvil/Auriga_API/internal/repositories/rProducts/rP_General"
+	// Imports comentados temporalmente - se usan en migraciones comentadas
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rAssets"
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rEvents"
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rInfluxQuery"
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rModels"
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rOthers"
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rProducts"
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rProducts/rP_CXC_L8"
+	// "github.com/remrafvil/Auriga_API/internal/repositories/rProducts/rP_General"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -75,31 +76,31 @@ func New(s *config.Settings, ctx context.Context) (*gorm.DB, error) {
 	// Migrar todas las tablas en orden correcto
 	tables := []interface{}{
 
-		&rModels.MrFactory{},
-		&rModels.MrDepartment{},
-		&rModels.MrFactoryDepartment{},
-		&rModels.MrEmployeeAuthentikRole{},
-		&rModels.MrEmployee{},
-		&rModels.MrEmployeeFactoryDepartment{},
-		&rModels.MrAttendance{},
-		&rModels.MrShift{},
-		&rModels.MrShiftAssignment{},
-		&rModels.MrTeam{},
-		&rModels.MrTeamMember{},
+	   		&rModels.MrFactory{},
+	   		&rModels.MrDepartment{},
+	   		&rModels.MrFactoryDepartment{},
+	   		&rModels.MrEmployeeAuthentikRole{},
+	   		&rModels.MrEmployee{},
+	   		&rModels.MrEmployeeFactoryDepartment{},
+	   		&rModels.MrAttendance{},
+	   		&rModels.MrShift{},
+	   		&rModels.MrShiftAssignment{},
+	   		&rModels.MrTeam{},
+	   		&rModels.MrTeamMember{},
 
-		// Nuevos modelos de mantenimiento
-		&rModels.MrMaintenancePlan{},
-		&rModels.MrMaintenanceProcedure{},
-		&rModels.MrMaintenanceSparePart{},
-		&rModels.MrMaintWorkOrder{},
-		&rModels.MrMaintWorkOrderAssignment{},
-		&rModels.MrMaintWorkOrderTask{},
-		&rModels.MrMaintWorkOrderSparePart{},
-		&rModels.MrSparePartStock{},
-		&rModels.MrAssetRegisterMovement{},
-		&rModels.MrPurchaseOrder{},
-		&rModels.MrPurchaseOrderItem{},
-	}
+	   		// Nuevos modelos de mantenimiento
+	   		&rModels.MrMaintenancePlan{},
+	   		&rModels.MrMaintenanceProcedure{},
+	   		&rModels.MrMaintenanceSparePart{},
+	   		&rModels.MrMaintWorkOrder{},
+	   		&rModels.MrMaintWorkOrderAssignment{},
+	   		&rModels.MrMaintWorkOrderTask{},
+	   		&rModels.MrMaintWorkOrderSparePart{},
+	   		&rModels.MrSparePartStock{},
+	   		&rModels.MrAssetRegisterMovement{},
+	   		&rModels.MrPurchaseOrder{},
+	   		&rModels.MrPurchaseOrderItem{},
+	   	}
 
 	for _, table := range tables {
 		if err := db.AutoMigrate(table); err != nil {
@@ -113,64 +114,64 @@ func New(s *config.Settings, ctx context.Context) (*gorm.DB, error) {
 
 	db.AutoMigrate(&rModels.MrProductType{}, &rModels.MrProductFeatureType{}, &rModels.MrProductFeatureTypeRelation{}, &rModels.MrProduct{}, &rModels.MrProductFeatureValue{}, &rModels.MrAsset{}, &rModels.MrDocuments{})
 
-	if err := rProducts.CreateMultipleProductTypes(db, rP_General.ProductTypesData); err != nil {
-		log.Fatalf("Error al crear tipos de productos: %v", err)
-	}
-	// Crear múltiples productos con valores
-	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.FactoriesToCreate); err != nil {
-		log.Fatalf("Error al crear los fábricas: %v", err)
-	}
-	log.Println("fábricas creados exitosamente!")
+	   	if err := rProducts.CreateMultipleProductTypes(db, rP_General.ProductTypesData); err != nil {
+	   		log.Fatalf("Error al crear tipos de productos: %v", err)
+	   	}
+	   	// Crear múltiples productos con valores
+	   	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.FactoriesToCreate); err != nil {
+	   		log.Fatalf("Error al crear los fábricas: %v", err)
+	   	}
+	   	log.Println("fábricas creados exitosamente!")
 
-	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.ExtrusionLinesToCreate); err != nil {
-		log.Fatalf("Error al crear los lineas de extrusión: %v", err)
-	}
-	log.Println("lineas de extrusión creados exitosamente!")
+	   	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.ExtrusionLinesToCreate); err != nil {
+	   		log.Fatalf("Error al crear los lineas de extrusión: %v", err)
+	   	}
+	   	log.Println("lineas de extrusión creados exitosamente!")
 
-	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.LinePartsToCreate); err != nil {
-		log.Fatalf("Error al crear los partes de líneas: %v", err)
-	}
-	log.Println("partes de líneas creados exitosamente!")
+	   	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.LinePartsToCreate); err != nil {
+	   		log.Fatalf("Error al crear los partes de líneas: %v", err)
+	   	}
+	   	log.Println("partes de líneas creados exitosamente!")
 
-	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.EquipmentToCreate); err != nil {
-		log.Fatalf("Error al crear los equipments: %v", err)
-	}
-	log.Println("equipments creados exitosamente!")
+	   	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.EquipmentToCreate); err != nil {
+	   		log.Fatalf("Error al crear los equipments: %v", err)
+	   	}
+	   	log.Println("equipments creados exitosamente!")
 
-	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.MotorsToCreate); err != nil {
-		log.Fatalf("Error al crear los motors: %v", err)
-	}
-	log.Println("Motors creados exitosamente!")
+	   	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.MotorsToCreate); err != nil {
+	   		log.Fatalf("Error al crear los motors: %v", err)
+	   	}
+	   	log.Println("Motors creados exitosamente!")
 
-	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.DrivesToCreate); err != nil {
-		log.Fatalf("Error al crear los drives: %v", err)
-	}
-	log.Println("Drives creados exitosamente!")
+	   	if err := rProducts.CreateMultipleProductsWithValues(db, rP_General.DrivesToCreate); err != nil {
+	   		log.Fatalf("Error al crear los drives: %v", err)
+	   	}
+	   	log.Println("Drives creados exitosamente!")
 
-	if err := rProducts.CreateMultipleProductsWithValues(db, rP_CXC_L8.CXC_L8_ProductsToCreate); err != nil {
-		log.Fatalf("Error al crear los drives: %v", err)
-	}
-	log.Println("Drives creados exitosamente!")
+	   	if err := rProducts.CreateMultipleProductsWithValues(db, rP_CXC_L8.CXC_L8_ProductsToCreate); err != nil {
+	   		log.Fatalf("Error al crear los drives: %v", err)
+	   	}
+	   	log.Println("Drives creados exitosamente!")
 
-	// Crear múltiples activos
+	   	// Crear múltiples activos
 
-	if err := rAssets.CreateMultipleAssets(db, rAssets.AssetsToCreate); err != nil {
-		fmt.Printf("Error al crear activos: %v\n", err)
-	} else {
-		fmt.Println("Activos creados exitosamente")
-	}
+	   	if err := rAssets.CreateMultipleAssets(db, rAssets.AssetsToCreate); err != nil {
+	   		fmt.Printf("Error al crear activos: %v\n", err)
+	   	} else {
+	   		fmt.Println("Activos creados exitosamente")
+	   	}
 
-	if err := rAssets.CreateMultipleAssets(db, rAssets.AssetsToCreate1); err != nil {
-		fmt.Printf("Error al crear activos: %v\n", err)
-	} else {
-		fmt.Println("Activos creados exitosamente")
-	}
+	   	if err := rAssets.CreateMultipleAssets(db, rAssets.AssetsToCreate1); err != nil {
+	   		fmt.Printf("Error al crear activos: %v\n", err)
+	   	} else {
+	   		fmt.Println("Activos creados exitosamente")
+	   	}
 
-	if err := CreateMultipleAssets_CXC_L8(db); err != nil {
-		fmt.Printf("Error al crear activos: %v\n", err)
-	} else {
-		fmt.Println("Activos creados exitosamente")
-	}
+	   	if err := CreateMultipleAssets_CXC_L8(db); err != nil {
+	   		fmt.Printf("Error al crear activos: %v\n", err)
+	   	} else {
+	   		fmt.Println("Activos creados exitosamente")
+	   	}
 	*/
 
 	// DOCUMENTOS

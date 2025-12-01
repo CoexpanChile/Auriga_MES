@@ -182,9 +182,6 @@ export const routePermissions = {
   '/usuarios': {
     group: 'GrAuriga',
   },
-  '/roles': {
-    group: 'GrAuriga',
-  },
   '/roles-permisos': {
     group: 'GrAuriga',
   },
@@ -214,6 +211,8 @@ export const getRoutePermissions = (path) => {
   // Si no hay permisos específicos, requiere autenticación básica
   return {};
 };
+
+
 
 
 

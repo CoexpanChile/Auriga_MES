@@ -18,8 +18,8 @@ func GetUserIDFromContext(ctx context.Context) (string, error) {
 	}
 
 	// Si es contexto estándar, buscar en valores
-	if userID := ctx.Value("user_id"); userID != nil {
-		return userID.(string), nil
+	if userID, ok := GetUserID(ctx); ok {
+		return userID, nil
 	}
 
 	return "", fmt.Errorf("user_id not found in context")
@@ -34,8 +34,8 @@ func GetUserEmailFromContext(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("user_email not found in Echo context")
 	}
 
-	if email := ctx.Value("user_email"); email != nil {
-		return email.(string), nil
+	if email, ok := GetUserEmail(ctx); ok {
+		return email, nil
 	}
 
 	return "", fmt.Errorf("user_email not found in context")
@@ -59,15 +59,8 @@ func GetUserGroupsFromContext(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("user_groups not found in Echo context")
 	}
 
-	if groupsInterface := ctx.Value("user_groups"); groupsInterface != nil {
-		if groupSlice, ok := groupsInterface.([]interface{}); ok {
-			for _, group := range groupSlice {
-				if groupStr, ok := group.(string); ok {
-					groups = append(groups, groupStr)
-				}
-			}
-			return groups, nil
-		}
+	if groups, ok := GetUserGroups(ctx); ok {
+		return groups, nil
 	}
 
 	return nil, fmt.Errorf("user_groups not found in context")

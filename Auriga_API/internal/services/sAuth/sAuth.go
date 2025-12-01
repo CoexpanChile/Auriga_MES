@@ -15,6 +15,13 @@ import (
 type Service interface {
 	ValidateTokenWithClaims(tokenString string) (jwt.MapClaims, error)
 	GetAuthURL(state string) string
+	GetAuthURLWithPrompt(state string, prompt string) string
+	GetAuthURLWithMultiplePrompts(state string, prompts []string) string
+	GetAuthURLForNewLogin(state string) string
+	GetLogoutURL(idTokenHint string) string
+	GetLogoutURLWithRedirect(state string) string
+	GetLogoutURLWithFrontendRedirect(idTokenHint string, frontendRedirectURL string) string
+	GetLogoutURLToAuthentikOverview(idTokenHint string) string
 	ExchangeCode(ctx context.Context, code string) (*oauth2.Token, error)
 	GetUserInfo(ctx context.Context, token *oauth2.Token) (*rModels.AuthentikUserInfo, error)
 	SyncUser(userInfo *rModels.AuthentikUserInfo) (*rModels.MrEmployee, error)

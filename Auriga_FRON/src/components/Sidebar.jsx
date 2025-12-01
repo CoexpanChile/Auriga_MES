@@ -1,194 +1,253 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { usePermissions } from '../hooks/usePermissions';
-import { useLanguage } from '../context/LanguageContext';
+import React, { useState } from 'react'
+import { NavLink } from 'react-router-dom'
+import { 
+  LayoutDashboard,
+  Factory,
+  Users,
+  Settings,
+  Shield,
+  ChevronRight,
+  ChevronDown,
+  Package,
+  Calendar,
+  BarChart3,
+  BoxSelect,
+  Search,
+  TreePine,
+  Zap,
+  FileText,
+  Clock,
+  UserCheck,
+  CalendarDays,
+  ClipboardList,
+  UserPlus,
+  DoorOpen,
+  CheckSquare,
+  Database,
+  Sliders,
+  GitBranch,
+  BookOpen,
+  Gauge,
+  CheckCircle2,
+  AlertTriangle,
+  TrendingUp,
+  Award,
+  ShieldAlert,
+  ScrollText,
+  AlertOctagon,
+  GraduationCap,
+  HardHat,
+  Heart,
+  Building2,
+  MapPin,
+  Timer,
+  Globe,
+  Ruler,
+  DollarSign,
+  RefreshCw,
+  Monitor,
+  User
+} from 'lucide-react'
+import { cn } from '../lib/utils'
 
-const Sidebar = () => {
-  const location = useLocation();
-  const { checkRole, checkGroup } = usePermissions();
-  const { t } = useLanguage();
-  const [expandedSections, setExpandedSections] = useState({
-    productive: true,
-    assets: true,
-    people: false,
-    processes: false,
-    quality: false,
-    safety: false,
-    config: false,
-    system: false,
-  });
+function Sidebar({ selectedFactory, factoryCode, isVisible = true }) {
+  const [expandedMenus, setExpandedMenus] = useState({})
 
-  const toggleSection = (sectionId) => {
-    setExpandedSections(prev => ({
+  const toggleMenu = (menuName) => {
+    setExpandedMenus(prev => ({
       ...prev,
-      [sectionId]: !prev[sectionId]
-    }));
-  };
+      [menuName]: !prev[menuName]
+    }))
+  }
 
-  const isActivePath = (path) => {
-    return location.pathname === path || location.pathname.startsWith(path + '/');
-  };
+  // Rutas sin prefijo de fábrica (normalizadas)
+  // La fábrica seleccionada se maneja vía localStorage y no aparece en la URL
 
-  const menuItems = [
+  const menuStructure = [
     {
-      id: 'productive',
-      label: 'Gestión Productiva',
-      icon: '📦',
-      expanded: expandedSections.productive,
-      items: [
-        { path: '/ordenes-fabricacion', label: 'Órdenes de Fabricación', icon: '📁' },
-        { path: '/programacion', label: 'Programación', icon: '📅' },
-        { path: '/oee-metricas', label: 'OEE y Métricas', icon: '📈' },
-        { path: '/materiales-consumos', label: 'Materiales y Consumos', icon: '🔧' },
-        { path: '/lotes-trazabilidad', label: 'Lotes y Trazabilidad', icon: '🔍' },
-      ],
-      available: checkRole('Manager') || checkRole('Supervisor') || checkRole('Planner'),
+      name: 'Dashboard',
+      path: '/dashboard',
+      icon: LayoutDashboard,
     },
     {
-      id: 'people',
-      label: 'Gestión de Personas',
-      icon: '👥',
-      expanded: expandedSections.people,
-      items: [
-        { path: '/turnos', label: 'Turnos', icon: '⏰' },
-        { path: '/empleados', label: 'Empleados', icon: '👤' },
-        { path: '/asignacion-personal', label: 'Asignación de Personal', icon: '📝' },
-      ],
-      available: checkRole('Manager') || checkRole('Supervisor'),
+      name: 'Production Management',
+      icon: Package,
+      submenu: [
+        { name: 'Manufacturing Orders', path: '/ordenes-fabricacion', icon: Package },
+        { name: 'Scheduling', path: '/programacion', icon: Calendar },
+        { name: 'OEE and Metrics', path: '/oee-metricas', icon: BarChart3 },
+        { name: 'Materials and Consumables', path: '/materiales-consumos', icon: BoxSelect },
+        { name: 'Batches and Traceability', path: '/lotes-trazabilidad', icon: Search },
+      ]
     },
     {
-      id: 'processes',
-      label: 'Gestión de Procesos',
-      icon: '⚙️',
-      expanded: expandedSections.processes,
-      items: [
-        { path: '/datos-maestros-procesos', label: 'Datos Maestros', icon: '📚' },
-        { path: '/parametros-procesos', label: 'Parámetros de Procesos', icon: '⚙️' },
-      ],
-      available: checkRole('Manager') || checkRole('Supervisor') || checkRole('Planner'),
+      name: 'Asset Management',
+      icon: Factory,
+      submenu: [
+        { name: 'Hierarchy of Assets', path: '/jerarquia-activos', icon: TreePine },
+        { name: 'Production Lines', path: '/lineas', icon: Factory },
+        { name: 'Status and Availability', path: '/estados-disponibilidad', icon: Zap },
+        { name: 'Technical Specifications', path: '/especificaciones-tecnicas', icon: FileText },
+      ]
     },
     {
-      id: 'quality',
-      label: 'Gestión de Calidad',
-      icon: '✅',
-      expanded: expandedSections.quality,
-      items: [
-        { path: '/planes-inspeccion', label: 'Planes de Inspección', icon: '🔬' },
-        { path: '/defectos', label: 'Defectos', icon: '⚠️' },
-      ],
-      available: checkRole('Manager') || checkRole('Supervisor'),
+      name: 'People Management',
+      icon: Users,
+      submenu: [
+        { name: 'Shifts', path: '/turnos', icon: Clock },
+        { name: 'Employees', path: '/empleados', icon: UserCheck },
+        { name: 'Assigned Shifts', path: '/turnos-asignados', icon: CalendarDays },
+        { name: 'Work Schedules', path: '/horarios-trabajo', icon: Clock },
+        { name: 'Attendance', path: '/asistencia', icon: ClipboardList },
+        { name: 'Assignments', path: '/asignaciones', icon: UserPlus },
+        { name: 'Special Outings', path: '/salidas-especiales', icon: DoorOpen },
+        { name: 'Evaluations', path: '/evaluaciones', icon: CheckSquare },
+      ]
     },
     {
-      id: 'assets',
-      label: 'Gestión de Activos',
-      icon: '🏭',
-      expanded: expandedSections.assets,
-      items: [
-        { path: '/jerarquia-activos', label: 'Jerarquía de Activos', icon: '🏗️' },
-        { path: '/lineas', label: 'Líneas de Producción', icon: '📏' },
-        { path: '/estados-disponibilidad', label: 'Estados y Disponibilidad', icon: '📊' },
-        { path: '/especificaciones-tecnicas', label: 'Especificaciones Técnicas', icon: '🔧' },
-      ],
-      available: checkRole('Manager') || checkRole('Supervisor'),
+      name: 'Process Management',
+      icon: GitBranch,
+      submenu: [
+        { name: 'Process Master Data', path: '/datos-maestros-procesos', icon: Database },
+        { name: 'Process Parameters', path: '/parametros-procesos', icon: Sliders },
+        { name: 'BOM and Routes', path: '/bom-rutas', icon: GitBranch },
+        { name: 'Work Instructions', path: '/instrucciones-trabajo', icon: BookOpen },
+        { name: 'Process Control', path: '/control-proceso', icon: Gauge },
+      ]
     },
     {
-      id: 'safety',
-      label: 'Prevención y Seguridad',
-      icon: '🛡️',
-      expanded: expandedSections.safety,
-      items: [
-        { path: '/riesgos', label: 'Riesgos', icon: '⚠️' },
-        { path: '/inspecciones-seguridad', label: 'Inspecciones de Seguridad', icon: '🔍' },
-      ],
-      available: checkRole('Manager') || checkRole('Supervisor'),
+      name: 'Quality Management',
+      icon: Award,
+      submenu: [
+        { name: 'Inspection Plans', path: '/planes-inspeccion', icon: CheckCircle2 },
+        { name: 'Quality Characteristics', path: '/caracteristicas-calidad', icon: CheckCircle2 },
+        { name: 'Defects and Nonconformities', path: '/defectos', icon: AlertTriangle },
+        { name: 'Statistical Process Control', path: '/control-estadistico', icon: TrendingUp },
+        { name: 'Corrective Actions', path: '/acciones-correctivas', icon: AlertTriangle },
+        { name: 'Certificates and Compliance', path: '/certificados', icon: Award },
+      ]
     },
     {
-      id: 'config',
-      label: 'Configuración General',
-      icon: '⚙️',
-      expanded: expandedSections.config,
-      items: [
-        { path: '/config-empresa', label: 'Configuración de Empresa', icon: '🏢' },
-        { path: '/config-plantas', label: 'Configuración de Plantas', icon: '🏭' },
-      ],
-      available: checkGroup('GrAuriga'),
+      name: 'Prevention and Safety',
+      icon: ShieldAlert,
+      submenu: [
+        { name: 'Risks and Hazards', path: '/riesgos', icon: AlertTriangle },
+        { name: 'Safety Inspections', path: '/inspecciones-seguridad', icon: ScrollText },
+        { name: 'Accidents and Incidents', path: '/accidentes', icon: AlertOctagon },
+        { name: 'Training', path: '/capacitaciones', icon: GraduationCap },
+        { name: 'Personal Protective Equipment (PPE)', path: '/epp', icon: HardHat },
+        { name: 'Occupational Health', path: '/salud-ocupacional', icon: Heart },
+      ]
     },
     {
-      id: 'system',
-      label: 'Sistema',
-      icon: '💻',
-      expanded: expandedSections.system,
-      items: [
-        { path: '/usuarios', label: 'Usuarios', icon: '👥' },
-        { path: '/roles', label: 'Roles', icon: '👔' },
-      ],
-      available: checkGroup('GrAuriga'),
+      name: 'General Configuration',
+      icon: Settings,
+      submenu: [
+        { name: 'Company Information', path: '/config-empresa', icon: Building2 },
+        { name: 'Plants and Locations', path: '/config-plantas', icon: MapPin },
+        { name: 'Work Calendar', path: '/config-calendario', icon: Calendar },
+        { name: 'Shift Definition', path: '/config-turnos', icon: Clock },
+        { name: 'Time Zones', path: '/config-zonas-horarias', icon: Globe },
+        { name: 'Units of Measurement', path: '/config-unidades', icon: Ruler },
+        { name: 'Currencies', path: '/config-monedas', icon: DollarSign },
+        { name: 'Automated Processes', path: '/procesos-automaticos', icon: RefreshCw },
+      ]
     },
-  ];
-
-  const filteredMenuItems = menuItems.filter(item => item.available);
+    {
+      name: 'System',
+      icon: Shield,
+      submenu: [
+        { name: 'Monitor', path: '/seguridad', icon: Monitor },
+        { name: 'Users', path: '/usuarios', icon: User },
+      ]
+    },
+  ]
 
   return (
-    <aside className="w-64 bg-gray-800 text-white h-screen fixed left-0 top-0 overflow-y-auto">
-      <div className="p-4">
-        {/* Logo */}
-        <div className="mb-6">
-          <h1 className="text-xl font-bold">MES</h1>
-        </div>
-
-        {/* Navigation */}
-        <nav className="space-y-1">
-          {filteredMenuItems.map((section) => (
-            <div key={section.id}>
-              <button
-                onClick={() => toggleSection(section.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-                  expandedSections[section.id]
-                    ? 'bg-gray-700'
-                    : 'hover:bg-gray-700'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span>{section.icon}</span>
-                  <span className="text-sm font-medium">{section.label}</span>
-                </div>
-                <span
-                  className={`transform transition-transform ${
-                    expandedSections[section.id] ? 'rotate-90' : ''
-                  }`}
+    <aside className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col h-full">
+      {/* Navegación Principal */}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {menuStructure.map((item) => {
+          const Icon = item.icon
+          const isExpanded = expandedMenus[item.name]
+          
+          // Si tiene submenú
+          if (item.submenu) {
+            return (
+              <div key={item.name}>
+                {/* Parent Menu Item */}
+                <button
+                  onClick={() => toggleMenu(item.name)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium',
+                    'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  )}
                 >
-                  ▶
-                </span>
-              </button>
+                  <Icon size={18} />
+                  <span className="flex-1 text-left">{item.name}</span>
+                  {isExpanded ? (
+                    <ChevronDown size={16} className="text-gray-400" />
+                  ) : (
+                    <ChevronRight size={16} className="text-gray-400" />
+                  )}
+                </button>
 
-              {expandedSections[section.id] && (
-                <div className="ml-4 mt-1 space-y-1">
-                  {section.items.map((item) => {
-                    const isActive = isActivePath(item.path);
-                    return (
-                      <Link
-                        key={item.path}
-                        to={item.path}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm ${
-                          isActive
-                            ? 'bg-blue-600 text-white'
-                            : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                        }`}
-                      >
-                        <span>{item.icon}</span>
-                        <span>{item.label}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
+                {/* Submenu Items */}
+                {isExpanded && (
+                  <div className="ml-4 mt-1 space-y-1">
+                    {item.submenu.map((subitem) => {
+                      const SubIcon = subitem.icon
+                      return (
+                        <NavLink
+                          key={subitem.path}
+                          to={subitem.path}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-medium',
+                              isActive
+                                ? 'bg-blue-600 text-white'
+                                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                            )
+                          }
+                        >
+                          <SubIcon size={16} />
+                          <span className="truncate">{subitem.name}</span>
+                        </NavLink>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          }
+          
+          // Si es un item simple (sin submenú)
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm font-medium',
+                  isActive
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon size={18} />
+                  <span>{item.name}</span>
+                  {isActive && <ChevronRight size={16} className="ml-auto" />}
+                </>
               )}
-            </div>
-          ))}
-        </nav>
-      </div>
+            </NavLink>
+          )
+        })}
+      </nav>
     </aside>
-  );
-};
+  )
+}
 
-export default Sidebar;
-
+export default Sidebar

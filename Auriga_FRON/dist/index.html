@@ -4,7 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mi App - React</title>
-    <script type="module" crossorigin src="/assets/index-96149ad3.js"></script>
+    <!-- Script inline que se ejecuta INMEDIATAMENTE para interceptar /auth/* -->
+    <script>
+      (function() {
+        console.log('🚨 [INLINE SCRIPT] Ejecutándose ANTES de que React se cargue');
+        var path = window.location.pathname;
+        console.log('🚨 [INLINE SCRIPT] Pathname:', path);
+        
+        if (path.startsWith('/auth/')) {
+          console.log('🚨 [INLINE SCRIPT] RUTA /auth/* DETECTADA - Redirigiendo INMEDIATAMENTE');
+          
+          var hostname = window.location.hostname;
+          var backendURL = hostname === '18.213.58.26' 
+            ? 'http://18.213.58.26:8081'
+            : 'http://localhost:8081';
+          
+          var fullURL = backendURL + path + window.location.search + window.location.hash;
+          console.log('🚨 [INLINE SCRIPT] Redirigiendo a:', fullURL);
+          
+          // Redirigir inmediatamente - esto debe detener toda la ejecución
+          window.location.replace(fullURL);
+        } else {
+          console.log('✅ [INLINE SCRIPT] Ruta normal, continuando con carga de React');
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-374c8614.js"></script>
+    <link rel="stylesheet" href="/assets/index-2684f461.css">
   </head>
   <body>
     <div id="root"></div>

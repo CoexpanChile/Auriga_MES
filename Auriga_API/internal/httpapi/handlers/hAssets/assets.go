@@ -52,7 +52,7 @@ func (h *handler) RegisterRoutes(e *echo.Echo, s *config.Settings) {
 	r := e.Group("/asset")
 	/*middlewares*/
 	//r.Use(middleware.JWTWithConfig(jwtconfig))
-	//r.Use(h.authMiddleware.CombinedMiddleware())
+	r.Use(h.authMiddleware.CombinedMiddleware())
 
 	//r.Use(h.authMiddleware.Handler())
 
@@ -62,4 +62,7 @@ func (h *handler) RegisterRoutes(e *echo.Echo, s *config.Settings) {
 	r.GET("/list", h.AssetList)
 	r.GET("/dosingbyline", h.DosingSystemByLine)
 	r.GET("/dosercomponents", h.DoserComponents)
+	r.GET("/lines/status", h.GetLinesStatus)
+	r.GET("/lines/throughput", h.GetLineThroughput)
+	r.GET("/lines/info", h.GetLineInfo)
 }

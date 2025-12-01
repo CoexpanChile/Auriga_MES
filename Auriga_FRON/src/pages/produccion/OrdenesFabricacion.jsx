@@ -1,418 +1,502 @@
-import React, { useState, useEffect } from 'react';
-import { useLanguage } from '../../context/LanguageContext';
+import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Package, Factory, Calendar, RefreshCw, Loader2, ChevronRight, Home, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
+import { Card } from '../../components/ui/Card'
+import { Badge } from '../../components/ui/Badge'
+import { api } from '../../lib/api'
+import { useLanguage } from '../../context/LanguageContext'
 
-const OrdenesFabricacion = () => {
-  const { t } = useLanguage();
+function OrdenesFabricacion() {
+  const navigate = useNavigate()
+  const { t } = useLanguage()
   
-  const [filtros, setFiltros] = useState({
-    linea: 'Todas las líneas',
-    busqueda: '',
-    fechaDesde: '',
-    fechaHasta: ''
-  });
-  const [tabActivo, setTabActivo] = useState('Estados de Orden');
-  const [ordenes, setOrdenes] = useState([]);
-  const [lineas, setLineas] = useState(['Todas las líneas', 'Linea 1', 'Linea 3', 'Linea 4', 'Linea 6', 'Linea 8']);
+  // Obtener fábrica seleccionada desde localStorage (sin prefijo en URL)
+  const selectedFactory = useMemo(() => {
+    const saved = localStorage.getItem('selectedFactory')
+    return saved && saved !== 'CX' ? saved : null
+  }, [])
+  
+  const isGlobalView = !selectedFactory
+  
+  const [lines, setLines] = useState([])
+  const [linesWithOrders, setLinesWithOrders] = useState([])
+  const [selectedLine, setSelectedLine] = useState(null)
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadingOrders, setLoadingOrders] = useState(false)
+  const [error, setError] = useState(null)
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const [refreshSAP, setRefreshSAP] = useState(false)
 
-  // Datos de ejemplo basados en la imagen
   useEffect(() => {
-    const ordenesEjemplo = [
-      {
-        id: 1,
-        linea: 'Linea 1',
-        numeroOF: '000010120272',
-        numeroWO: 'W1010181',
-        material: {
-          codigo: 'EX00014091',
-          descripcion: 'PE.PP NEGRO',
-          especificacion: '701 X 0,78'
-        },
-        fechas: {
-          inicio: '2025-11-24',
-          fin: '2025-11-24'
-        },
-        cantidades: {
-          planificada: 1000,
-          producida: 326,
-          restante: 674,
-          unidad: 'KG'
-        },
-        progreso: 33,
-        estado: {
-          tipo: 'ATRASADA',
-          color: 'red',
-          icono: '✗'
-        }
-      },
-      {
-        id: 2,
-        linea: 'Linea 3',
-        numeroOF: '000010119953',
-        numeroWO: 'W1010183',
-        material: {
-          codigo: 'EX00026134',
-          descripcion: 'TRANSLUCIDO',
-          especificacion: 'P.P.CLA 660 X 1.70'
-        },
-        fechas: {
-          inicio: '2025-11-24',
-          fin: '2025-11-25'
-        },
-        cantidades: {
-          planificada: 9000,
-          producida: 4911,
-          restante: 4089,
-          unidad: 'KG'
-        },
-        progreso: 55,
-        estado: {
-          tipo: 'EN PROCESO',
-          color: 'blue',
-          icono: 'ℹ'
-        }
-      },
-      {
-        id: 3,
-        linea: 'Linea 4',
-        numeroOF: '000010119613',
-        numeroWO: 'W1010184',
-        material: {
-          codigo: 'EX00026361',
-          descripcion: 'BR.CREMA 457 X 1.10',
-          especificacion: ''
-        },
-        fechas: {
-          inicio: '2025-11-25',
-          fin: '2025-11-26'
-        },
-        cantidades: {
-          planificada: 30000,
-          producida: 3482,
-          restante: 26518,
-          unidad: 'KG'
-        },
-        progreso: 12,
-        estado: {
-          tipo: 'PENDIENTE',
-          color: 'yellow',
-          icono: 'ℹ'
-        }
-      }
-    ];
-    setOrdenes(ordenesEjemplo);
-  }, []);
+    loadLines()
+  }, [selectedFactory])
 
-  const tabs = ['Estados de Orden', 'Tipos de Orden', 'Prioridades', 'Estrategias de Liberación'];
-
-  const handleFiltroChange = (campo, valor) => {
-    setFiltros(prev => ({
-      ...prev,
-      [campo]: valor
-    }));
-  };
-
-  const aplicarFiltros = () => {
-    // TODO: Implementar lógica de filtrado con backend
-    console.log('Aplicando filtros:', filtros);
-  };
-
-  const getEstadoColor = (estado) => {
-    switch (estado.color) {
-      case 'red':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-red-300 dark:border-red-700';
-      case 'blue':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-300 dark:border-blue-700';
-      case 'yellow':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700';
-      case 'green':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-300 dark:border-green-700';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600';
+  useEffect(() => {
+    if (lines.length > 0) {
+      loadOrdersForAllLines()
     }
-  };
+  }, [lines])
 
-  const formatearFecha = (fecha) => {
-    if (!fecha) return '';
-    // Mantener formato YYYY-MM-DD como en la imagen
-    return fecha;
-  };
+  useEffect(() => {
+    if (selectedLine) {
+      loadOrders()
+      const interval = setInterval(loadOrders, 60000)
+      return () => clearInterval(interval)
+    }
+  }, [selectedLine, refreshSAP])
 
-  return (
-    <div className="min-h-full bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-full mx-auto">
-        {/* Header */}
-        <div className="mb-6 flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Órdenes de Fabricación
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">
-              Gestión y seguimiento de órdenes de producción por líneas
-            </p>
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-sm font-medium">Última sincronización</span>
-          </button>
-        </div>
+  useEffect(() => {
+    if (lines.length > 0) {
+      const interval = setInterval(() => {
+        loadOrdersForAllLines()
+      }, 60000)
+      return () => clearInterval(interval)
+    }
+  }, [lines])
 
-        {/* Tabs de Filtros */}
-        <div className="mb-6 flex gap-1 border-b border-gray-300 dark:border-gray-700">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setTabActivo(tab)}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
-                tabActivo === tab
-                  ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+  const loadLines = async () => {
+    try {
+      setLoading(true)
+      
+      // Usar /asset/list y filtrar en el cliente (evita CORS y 404)
+      const assets = await api.get('/asset/list')
+      
+      // Filtrar solo líneas de producción
+      let lines = (assets || []).filter(asset => 
+        asset.hierarchical_level && 
+        asset.hierarchical_level.length >= 2 &&
+        asset.hierarchical_level[1]?.startsWith('L')
+      )
+      
+      // Filtrar por fábrica si se especifica
+      if (selectedFactory) {
+        lines = lines.filter(line => 
+          line.location?.includes(selectedFactory) || 
+          line.hierarchical_level?.[0] === selectedFactory ||
+          line.factory === selectedFactory
+        )
+      }
+      
+      setLines(lines)
+      setError(null)
+    } catch (err) {
+      console.error('Error loading lines:', err)
+      setError('Error de conexión')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-        {/* Filtros */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Línea de Producción */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Línea de Producción
-              </label>
-              <select
-                value={filtros.linea}
-                onChange={(e) => handleFiltroChange('linea', e.target.value)}
-                className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-blue-500 focus:ring-blue-500"
-              >
-                {lineas.map((linea) => (
-                  <option key={linea} value={linea}>
-                    {linea}
-                  </option>
-                ))}
-              </select>
-            </div>
+  const loadOrdersForAllLines = async () => {
+    const ordersPromises = lines.map(async (line) => {
+      try {
+        const sapCode = line.sap_code || line.code || line.line || ''
+        const headers = {
+          'Factory': line.factory,
+          'ProdLine': line.line,
+          'SapCode': sapCode,
+          'SapRequest': 'false'
+        }
+        
+        const data = await api.post('/sap/orders', {}, { headers })
+        
+        const ordersData = Array.isArray(data) ? data : []
+        return { line, orders: ordersData }
+      } catch (err) {
+        console.error(`Error loading orders for ${line.line}:`, err)
+        return { line, orders: [] }
+      }
+    })
+    
+    const results = await Promise.all(ordersPromises)
+    setLinesWithOrders(results)
+  }
 
-            {/* Buscar OF/Material */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Buscar OF/Material
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="OF, material, descripción..."
-                  value={filtros.busqueda}
-                  onChange={(e) => handleFiltroChange('busqueda', e.target.value)}
-                  className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-blue-500 focus:ring-blue-500 pl-10"
-                />
-                <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-            </div>
+  const loadOrders = async () => {
+    if (!selectedLine) return
+    
+    try {
+      setLoadingOrders(true)
+      
+      const sapCode = selectedLine.sap_code || selectedLine.code || selectedLine.line || ''
+      
+      const headers = {
+        'Factory': selectedLine.factory,
+        'ProdLine': selectedLine.line,
+        'SapCode': sapCode,
+        'SapRequest': refreshSAP ? 'true' : 'false'
+      }
+      
+      const data = await api.post('/sap/orders', {}, { headers })
+      
+      setOrders(Array.isArray(data) ? data : [])
+      setLastUpdate(new Date())
+      setError(null)
+      setRefreshSAP(false)
+      
+      setLinesWithOrders(prev => prev.map(item => 
+        item.line.id === selectedLine.id 
+          ? { ...item, orders: Array.isArray(data) ? data : [] }
+          : item
+      ))
+    } catch (err) {
+      console.error('Error loading orders:', err)
+      if (err.message?.includes('403')) {
+        setError('No tienes permisos para acceder a las órdenes de producción')
+      } else if (err.message?.includes('401')) {
+        setError('Sesión expirada. Por favor, inicia sesión nuevamente')
+      } else {
+        setError('Error al cargar las órdenes de producción')
+      }
+    } finally {
+      setLoadingOrders(false)
+    }
+  }
 
-            {/* Fecha Desde */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Fecha Desde
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={filtros.fechaDesde}
-                  onChange={(e) => handleFiltroChange('fechaDesde', e.target.value)}
-                  placeholder="dd/mm/aaaa"
-                  className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-blue-500 focus:ring-blue-500 pr-10 py-2"
-                />
-                <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-            </div>
+  const handleRefreshSAP = () => {
+    setRefreshSAP(true)
+    loadOrders()
+  }
 
-            {/* Fecha Hasta */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Fecha Hasta
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={filtros.fechaHasta}
-                  onChange={(e) => handleFiltroChange('fechaHasta', e.target.value)}
-                  placeholder="dd/mm/aaaa"
-                  className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-blue-500 focus:ring-blue-500 pr-10 py-2"
-                />
-                <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-            </div>
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A'
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    } catch {
+      return dateString
+    }
+  }
 
-            {/* Botón Aplicar Filtros */}
-            <div className="flex items-end">
-              <button
-                onClick={aplicarFiltros}
-                className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                </svg>
-                <span>Aplicar Filtros</span>
-              </button>
-            </div>
-          </div>
-        </div>
+  const getOrderStatus = (order) => {
+    const now = new Date()
+    const started = new Date(order.StarteddAt)
+    const finished = new Date(order.FinishedAt)
+    
+    if (now < started) {
+      return { text: 'Programada', color: 'info', icon: Calendar }
+    } else if (now >= started && now <= finished) {
+      return { text: 'En Producción', color: 'success', icon: CheckCircle2 }
+    } else {
+      return { text: 'Finalizada', color: 'secondary', icon: XCircle }
+    }
+  }
 
-        {/* Tabla de Órdenes */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-900/50">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    LÍNEA - OF
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    MATERIAL
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    FECHAS
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    CANTIDADES
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    PROGRESO
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    ESTADO
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                    ACCIONES
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {ordenes.map((orden) => (
-                  <tr key={orden.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                    {/* LÍNEA - OF */}
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {orden.linea}
-                        </div>
-                        <div className="text-sm">
-                          <span className="font-mono text-gray-900 dark:text-white">
-                            {orden.numeroOF}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                          {orden.numeroWO}
-                        </div>
-                      </div>
-                    </td>
+  const calculateProgress = (produced, toProduce) => {
+    if (!produced || !toProduce) return 0
+    const producedNum = parseFloat(produced) || 0
+    const toProduceNum = parseFloat(toProduce) || 0
+    if (toProduceNum === 0) return 0
+    return Math.min(100, Math.round((producedNum / toProduceNum) * 100))
+  }
 
-                    {/* MATERIAL */}
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        <div className="text-sm font-mono font-medium text-gray-900 dark:text-white">
-                          {orden.material.codigo}
-                        </div>
-                        <div className="text-sm text-gray-900 dark:text-gray-100">
-                          {orden.material.descripcion}
-                        </div>
-                        {orden.material.especificacion && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {orden.material.especificacion}
-                          </div>
-                        )}
-                      </div>
-                    </td>
+  const getCurrentOrder = (line) => {
+    const lineData = linesWithOrders.find(item => item.line.id === line.id)
+    if (!lineData || !lineData.orders || lineData.orders.length === 0) {
+      return null
+    }
+    
+    const now = new Date()
+    const activeOrder = lineData.orders.find(order => {
+      const started = new Date(order.StarteddAt)
+      const finished = new Date(order.FinishedAt)
+      return now >= started && now <= finished
+    })
+    
+    return activeOrder || lineData.orders[0] || null
+  }
 
-                    {/* FECHAS */}
-                    <td className="px-6 py-4">
-                      <div className="text-sm space-y-1">
-                        <div className="text-gray-900 dark:text-white">
-                          <span className="text-gray-500 dark:text-gray-400">Inicio: </span>
-                          <span className="font-mono">{orden.fechas.inicio}</span>
-                        </div>
-                        <div className="text-gray-900 dark:text-white">
-                          <span className="text-gray-500 dark:text-gray-400">Fin: </span>
-                          <span className="font-mono">{orden.fechas.fin}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* CANTIDADES */}
-                    <td className="px-6 py-4">
-                      <div className="text-sm space-y-1">
-                        <div className="text-gray-900 dark:text-white">
-                          <span className="text-gray-500 dark:text-gray-400">Planificado: </span>
-                          <span className="font-semibold">{orden.cantidades.planificada.toLocaleString()} {orden.cantidades.unidad}</span>
-                        </div>
-                        <div className="text-gray-900 dark:text-white">
-                          <span className="text-gray-500 dark:text-gray-400">Producido: </span>
-                          <span className="font-semibold">{orden.cantidades.producida.toLocaleString()} {orden.cantidades.unidad}</span>
-                        </div>
-                        <div className="text-gray-600 dark:text-gray-400">
-                          <span>Restante: </span>
-                          <span className="font-semibold">{orden.cantidades.restante.toLocaleString()} {orden.cantidades.unidad}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* PROGRESO */}
-                    <td className="px-6 py-4">
-                      <div className="w-40">
-                        <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300 mb-2">
-                          <span className="font-medium">{orden.progreso}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              orden.estado.tipo === 'ATRASADA'
-                                ? 'bg-red-500'
-                                : orden.estado.tipo === 'EN PROCESO'
-                                ? 'bg-blue-500'
-                                : 'bg-yellow-500'
-                            }`}
-                            style={{ width: `${orden.progreso}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* ESTADO */}
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-md text-xs font-semibold border ${
-                        orden.estado.tipo === 'ATRASADA' 
-                          ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
-                          : orden.estado.tipo === 'EN PROCESO'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800'
-                          : 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800'
-                      }`}>
-                        {orden.estado.tipo}
-                      </span>
-                    </td>
-
-                    {/* ACCIONES */}
-                    <td className="px-6 py-4">
-                      {/* Columna vacía según el diseño */}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">{t.common?.loading || 'Cargando líneas de producción...'}</p>
         </div>
       </div>
-    </div>
-  );
-};
+    )
+  }
 
-export default OrdenesFabricacion;
+  return (
+    <div className="min-h-screen bg-gray-900 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Package className="w-8 h-8 text-blue-400" />
+              <div>
+                <h1 className="text-3xl font-bold text-white">
+                  {t.produccion?.ordenesFabricacion?.title || 'Órdenes de Fabricación'}
+                </h1>
+                <p className="text-gray-400 mt-1">
+                  {isGlobalView ? 'Todas las fábricas' : `Fábrica: ${selectedFactory}`}
+                </p>
+              </div>
+            </div>
+            {lastUpdate && (
+              <div className="text-sm text-gray-400">
+                Última actualización: {lastUpdate.toLocaleTimeString('es-ES')}
+              </div>
+            )}
+          </div>
+
+          {/* Breadcrumbs */}
+          <nav className="flex items-center gap-2 text-sm text-gray-400 mb-4">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="hover:text-white transition-colors flex items-center gap-1"
+            >
+              <Home className="w-4 h-4" />
+              {t.dashboard?.title || 'Dashboard'}
+            </button>
+            <ChevronRight className="w-4 h-4" />
+            <span className="text-white">{t.produccion?.ordenesFabricacion?.title || 'Órdenes de Fabricación'}</span>
+          </nav>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-900/20 border border-red-500 rounded-lg p-4 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <span className="text-red-400">{error}</span>
+          </div>
+        )}
+
+        {/* Lines Selection */}
+        {!selectedLine && (
+          <Card className="mb-6">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-white mb-4">
+                {t.produccion?.ordenesFabricacion?.selectLine || 'Seleccionar Línea de Producción'}
+              </h2>
+              {lines.length === 0 ? (
+                <p className="text-gray-400">{t.common?.noData || 'No hay líneas disponibles'}</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {lines.map((line) => {
+                    const currentOrder = getCurrentOrder(line)
+                    const orderStatus = currentOrder ? getOrderStatus(currentOrder) : null
+                    const orderProgress = currentOrder ? calculateProgress(
+                      currentOrder.QuantityProduced, 
+                      currentOrder.QuantityToProduce
+                    ) : 0
+                    
+                    return (
+                      <button
+                        key={line.id}
+                        onClick={() => setSelectedLine(line)}
+                        className="p-4 bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <Factory className="w-5 h-5 text-blue-400" />
+                          <Badge variant={line.influx_available ? 'success' : 'secondary'}>
+                            {line.influx_available ? 'Activa' : 'Sin datos'}
+                          </Badge>
+                        </div>
+                        <h3 className="font-semibold text-white mb-1">{line.line}</h3>
+                        <p className="text-sm text-gray-400 mb-3">{line.location || line.factory}</p>
+                        
+                        {currentOrder ? (
+                          <div className="mt-3 pt-3 border-t border-gray-700">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs text-gray-400">Orden de Fabricación</span>
+                              {orderStatus && (
+                                <Badge variant={orderStatus.color} className="text-xs">
+                                  {orderStatus.text}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">OF:</span>
+                                <span className="text-sm font-semibold text-white">{currentOrder.OrderNumber}</span>
+                              </div>
+                              {currentOrder.ProductDescription && (
+                                <p className="text-xs text-gray-300 line-clamp-2">
+                                  {currentOrder.ProductDescription}
+                                </p>
+                              )}
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-400">
+                                  Producido: <span className="text-white font-medium">
+                                    {currentOrder.QuantityProduced || '0'}
+                                  </span> / <span className="text-gray-400">
+                                    {currentOrder.QuantityToProduce || '0'}
+                                  </span>
+                                </span>
+                              </div>
+                              {currentOrder.QuantityRemainedToProduce && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-orange-400 font-medium">
+                                    Pendiente: {currentOrder.QuantityRemainedToProduce} {currentOrder.MeasurementUnit || ''}
+                                  </span>
+                                </div>
+                              )}
+                              {orderProgress > 0 && (
+                                <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+                                  <div
+                                    className="h-full bg-blue-600 rounded-full transition-all"
+                                    style={{ width: `${orderProgress}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-3 pt-3 border-t border-gray-700">
+                            <p className="text-xs text-gray-500">Sin orden de fabricación</p>
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* Orders Display */}
+        {selectedLine && (
+          <>
+            <Card className="mb-6">
+              <div className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setSelectedLine(null)}
+                      className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                    >
+                      <ChevronRight className="w-5 h-5 text-gray-400 rotate-180" />
+                    </button>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">{selectedLine.line}</h2>
+                      <p className="text-gray-400">{selectedLine.location || selectedLine.factory}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleRefreshSAP}
+                    disabled={loadingOrders}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  >
+                    {loadingOrders ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    <span className="text-white">Actualizar desde SAP</span>
+                  </button>
+                </div>
+              </div>
+            </Card>
+
+            {loadingOrders ? (
+              <Card>
+                <div className="p-12 text-center">
+                  <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
+                  <p className="text-gray-400">{t.common?.loading || 'Cargando órdenes de producción...'}</p>
+                </div>
+              </Card>
+            ) : orders.length === 0 ? (
+              <Card>
+                <div className="p-12 text-center">
+                  <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400 text-lg">{t.common?.noData || 'No hay órdenes de producción disponibles'}</p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    Haz clic en "Actualizar desde SAP" para sincronizar las órdenes
+                  </p>
+                </div>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {orders.map((order, index) => {
+                  const status = getOrderStatus(order)
+                  const progress = calculateProgress(order.QuantityProduced, order.QuantityToProduce)
+                  const StatusIcon = status.icon
+                  
+                  return (
+                    <Card key={index} className="overflow-hidden">
+                      <div className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className="text-xl font-bold text-white">{order.OrderNumber}</h3>
+                              <Badge variant={status.color}>
+                                <StatusIcon className="w-3 h-3 mr-1" />
+                                {status.text}
+                              </Badge>
+                              {order.OrderNType && (
+                                <Badge variant="secondary">{order.OrderNType}</Badge>
+                              )}
+                            </div>
+                            <p className="text-lg text-gray-300 mb-1">{order.ProductName}</p>
+                            {order.ProductDescription && (
+                              <p className="text-sm text-gray-400">{order.ProductDescription}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-gray-400">Progreso de Producción</span>
+                            <span className="text-sm font-semibold text-white">{progress}%</span>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                            <div
+                              className="h-full bg-blue-600 transition-all duration-500"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-2 text-sm">
+                            <span className="text-gray-400">
+                              Producido: <span className="text-white font-medium">{order.QuantityProduced || '0'}</span> {order.MeasurementUnit || ''}
+                            </span>
+                            <span className="text-gray-400">
+                              Objetivo: <span className="text-white font-medium">{order.QuantityToProduce || '0'}</span> {order.MeasurementUnit || ''}
+                            </span>
+                            {order.QuantityRemainedToProduce && (
+                              <span className="text-gray-400">
+                                Restante: <span className="text-white font-medium">{order.QuantityRemainedToProduce}</span> {order.MeasurementUnit || ''}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-700">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Clock className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm text-gray-400">Inicio Programado</span>
+                            </div>
+                            <p className="text-white font-medium">{formatDate(order.StarteddAt)}</p>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Clock className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm text-gray-400">Fin Programado</span>
+                            </div>
+                            <p className="text-white font-medium">{formatDate(order.FinishedAt)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default OrdenesFabricacion

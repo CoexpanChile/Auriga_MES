@@ -10,11 +10,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// Función helper para limpiar cookies
+// Función helper para limpiar cookies - MEJORADA para limpiar todas las variaciones
 func (h *handler) cleanupCookies(c echo.Context) {
-	cookies := []string{"auth_token", "user_data", "session_active"}
+	// Lista completa de cookies a limpiar
+	cookies := []string{
+		"auth_token",
+		"user_data",
+		"session_active",
+		// Variaciones posibles con diferentes paths y dominios
+	}
+	
+	// Limpiar cookies con diferentes configuraciones para asegurar eliminación completa
 	for _, cookieName := range cookies {
-		cookie := &http.Cookie{
+		// Configuración 1: Path raíz, sin dominio
+		cookie1 := &http.Cookie{
 			Name:     cookieName,
 			Value:    "",
 			Path:     "/",
@@ -22,9 +31,23 @@ func (h *handler) cleanupCookies(c echo.Context) {
 			Secure:   false,
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   -1,
-			Expires:  time.Now().Add(-time.Hour),
+			Expires:  time.Now().Add(-time.Hour * 24),
 		}
-		c.SetCookie(cookie)
+		c.SetCookie(cookie1)
+		
+		// Configuración 2: Path raíz, con dominio vacío (por si acaso)
+		cookie2 := &http.Cookie{
+			Name:     cookieName,
+			Value:    "",
+			Path:     "/",
+			Domain:   "",
+			HttpOnly: cookieName == "auth_token",
+			Secure:   false,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   -1,
+			Expires:  time.Now().Add(-time.Hour * 24),
+		}
+		c.SetCookie(cookie2)
 	}
 }
 
@@ -36,37 +59,61 @@ func (h *handler) logoutHandler(c echo.Context) error {
 	// 1. Obtener token para revocación
 	cookie, err := c.Cookie("auth_token")
 	var tokenString string
+	var idTokenHint string
 	if err == nil && cookie.Value != "" {
 		tokenString = cookie.Value
 
-		// 2. Calcular expiración
+		// 2. Intentar obtener ID token si está disponible (para logout de Authentik)
+		// El ID token puede estar en el access_token o en una cookie separada
 		claims, err := getUserClaimsFromContext(c)
-		expiresAt := time.Now().Add(24 * time.Hour) // Default
 		if err == nil {
+			// Usar el access_token como id_token_hint si está disponible
+			idTokenHint = tokenString
+			
+			// Calcular expiración
+			expiresAt := time.Now().Add(24 * time.Hour) // Default
 			if expUnix, ok := claims["exp"].(float64); ok {
 				expiresAt = time.Unix(int64(expUnix), 0)
 			}
-		}
 
-		// 3. Agregar a blacklist
-		h.service.AddToBlacklist(tokenString, expiresAt)
+			// 3. Agregar a blacklist
+			h.service.AddToBlacklist(tokenString, expiresAt)
+		}
+		
+		// 4. Limpiar caché de tokens validados del middleware
+		if h.authMiddleware != nil {
+			h.authMiddleware.ClearTokenCache(tokenString)
+		}
 	}
 
-	// 4. Limpiar cookies
+	// 5. Limpiar cookies (incluyendo todas las posibles variaciones)
 	h.cleanupCookies(c)
 
-	// ✅ ELIMINADO: h.service.ClearUserCache(userID) - Ya no es necesario
-
-	h.logger.Info("User logged out",
+	h.logger.Info("User logged out locally",
 		zap.String("user_id", userID),
 		zap.String("email", userEmail),
-		zap.Bool("token_revoked", tokenString != ""))
+		zap.Bool("token_revoked", tokenString != ""),
+		zap.Bool("cache_cleared", tokenString != ""))
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"message":       "Logged out successfully",
-		"token_revoked": tokenString != "",
-		"user_id":       userID,
-	})
+	// 6. Redirigir a Authentik para cerrar sesión allí también
+	// Construir URL de logout de Authentik
+	authentikLogoutURL := h.service.GetLogoutURL(idTokenHint)
+	
+	// Si es una petición AJAX/JSON, retornar la URL de logout
+	if c.Request().Header.Get("Accept") == "application/json" || 
+	   c.QueryParam("format") == "json" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"message":       "Logged out successfully",
+			"token_revoked": tokenString != "",
+			"cache_cleared": tokenString != "",
+			"user_id":       userID,
+			"logout_url":    authentikLogoutURL,
+			"redirect":      true,
+		})
+	}
+
+	// Redirigir a Authentik para cerrar sesión
+	return c.Redirect(http.StatusFound, authentikLogoutURL)
 }
 
 /* func (h *handler) profileHandler(c echo.Context) error {
@@ -427,3 +474,4 @@ func hasGroup(groups []string, targetGroup string) bool {
 	}
 	return false
 }
+

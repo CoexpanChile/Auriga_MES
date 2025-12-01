@@ -28,7 +28,7 @@ func MainMiddlewares(e *echo.Echo, s *config.Settings, logger *zap.Logger) {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	frontendURL := "http://192.168.122.211:5826"
+	frontendURL := "http://18.213.58.26:5826"
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:     []string{frontendURL, grafanaConnection1, grafanaConnection2},
 		AllowHeaders:     []string{"*"},

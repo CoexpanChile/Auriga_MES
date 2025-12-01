@@ -51,23 +51,119 @@ func (m *repository) SyncUser(userInfo *rModels.AuthentikUserInfo) (*rModels.MrE
 		result = m.db.Where("email = ?", userInfo.Email).First(&employee)
 
 		if result.Error == gorm.ErrRecordNotFound {
-			// Crear NUEVO empleado
-			employee = rModels.MrEmployee{
-				AuthentikID: userInfo.Sub,
-				IDN:         extractIDNFromOrganization(userInfo.Organization),
-				WorkdayID:   extractWorkdayIDFromOrganization(userInfo.Organization),
-				FirstName:   extractFirstName(userInfo.Name),
-				LastName:    extractLastName(userInfo.Name),
-				Email:       userInfo.Email,
-				Active:      true,
-				External:    false,
-				HireDate:    now,
-				CreatedAt:   now,
-				UpdatedAt:   now,
+			// 3. Si no existe por email, buscar por workday_id (para evitar duplicados)
+			workdayID := extractWorkdayIDFromOrganization(userInfo.Organization)
+			if workdayID != "" {
+				result = m.db.Where("workday_id = ?", workdayID).First(&employee)
+				
+				if result.Error == nil {
+					// Empleado existe por workday_id pero no por AuthentikID ni email
+					// Actualizar con AuthentikID y email
+					var currentEmployee rModels.MrEmployee
+					if err := m.db.Where("id = ?", employee.ID).Select("active").First(&currentEmployee).Error; err != nil {
+						m.logger.Warn("Failed to read current active status, using cached value",
+							zap.Error(err),
+							zap.Uint("employee_id", employee.ID))
+						currentEmployee.Active = employee.Active
+					}
+					
+					wasActive := currentEmployee.Active
+					m.logger.Info("📊 [SyncUser] Empleado encontrado por workday_id, actualizando con AuthentikID",
+						zap.Uint("employee_id", employee.ID),
+						zap.String("workday_id", workdayID),
+						zap.Bool("was_active", wasActive))
+					
+					updateData := map[string]interface{}{
+						"authentik_id": userInfo.Sub,
+						"email":        userInfo.Email,
+						"first_name":   extractFirstName(userInfo.Name),
+						"last_name":    extractLastName(userInfo.Name),
+						"updated_at":   now,
+					}
+					
+					if wasActive {
+						updateData["active"] = true
+					}
+					// No actualizar workday_id ya que es el mismo
+					
+					if err := m.db.Model(&employee).Updates(updateData).Error; err != nil {
+						return nil, fmt.Errorf("failed to update employee with authentik_id (found by workday_id): %w", err)
+					}
+					
+					m.logger.Info("Employee updated with AuthentikID (found by workday_id)",
+						zap.Uint("employee_id", employee.ID),
+						zap.String("email", employee.Email),
+						zap.String("authentik_id", userInfo.Sub),
+						zap.String("workday_id", workdayID))
+				}
 			}
+			
+			// Si después de buscar por workday_id aún no se encontró, crear nuevo empleado
+			if result.Error == gorm.ErrRecordNotFound {
+				// Crear NUEVO empleado
+				employee = rModels.MrEmployee{
+					AuthentikID: userInfo.Sub,
+					IDN:         extractIDNFromOrganization(userInfo.Organization),
+					WorkdayID:   workdayID,
+					FirstName:   extractFirstName(userInfo.Name),
+					LastName:    extractLastName(userInfo.Name),
+					Email:       userInfo.Email,
+					Active:      true,
+					External:    false,
+					HireDate:    now,
+					CreatedAt:   now,
+					UpdatedAt:   now,
+				}
 
-			if err := m.db.Create(&employee).Error; err != nil {
-				return nil, fmt.Errorf("failed to create employee: %w", err)
+				if err := m.db.Create(&employee).Error; err != nil {
+					// Si hay error de clave duplicada en workday_id, buscar el empleado existente
+					if strings.Contains(err.Error(), "idx_mr_employees_workday_id") || strings.Contains(err.Error(), "23505") {
+						m.logger.Warn("🔄 [SyncUser] Error de workday_id duplicado, buscando empleado existente",
+							zap.String("workday_id", workdayID),
+							zap.String("email", userInfo.Email))
+						
+						// Buscar el empleado existente por workday_id
+						if findErr := m.db.Where("workday_id = ?", workdayID).First(&employee).Error; findErr == nil {
+							// Empleado encontrado, actualizar con AuthentikID
+							var currentEmployee rModels.MrEmployee
+							if err := m.db.Where("id = ?", employee.ID).Select("active").First(&currentEmployee).Error; err != nil {
+								currentEmployee.Active = employee.Active
+							}
+							
+							wasActive := currentEmployee.Active
+							updateData := map[string]interface{}{
+								"authentik_id": userInfo.Sub,
+								"email":        userInfo.Email,
+								"first_name":   extractFirstName(userInfo.Name),
+								"last_name":    extractLastName(userInfo.Name),
+								"updated_at":   now,
+							}
+							
+							if wasActive {
+								updateData["active"] = true
+							}
+							
+							if updateErr := m.db.Model(&employee).Updates(updateData).Error; updateErr != nil {
+								return nil, fmt.Errorf("failed to update employee after duplicate workday_id error: %w", updateErr)
+							}
+							
+							m.logger.Info("✅ [SyncUser] Empleado actualizado después de error de workday_id duplicado",
+								zap.Uint("employee_id", employee.ID),
+								zap.String("workday_id", workdayID))
+						} else {
+							return nil, fmt.Errorf("failed to create employee and could not find existing by workday_id: %w", err)
+						}
+					} else {
+						return nil, fmt.Errorf("failed to create employee: %w", err)
+					}
+				} else {
+					m.logger.Info("New employee created from Authentik",
+						zap.String("authentik_id", userInfo.Sub),
+						zap.String("email", employee.Email),
+						zap.Uint("db_id", employee.ID),
+						zap.String("idn", employee.IDN),
+						zap.String("workday_id", employee.WorkdayID))
+				}
 			}
 
 			m.logger.Info("New employee created from Authentik",
@@ -79,12 +175,40 @@ func (m *repository) SyncUser(userInfo *rModels.AuthentikUserInfo) (*rModels.MrE
 
 		} else if result.Error == nil {
 			// Empleado existe por email pero no tiene AuthentikID - ACTUALIZAR
+			// ✅ CRÍTICO: Leer el estado 'active' DIRECTAMENTE de la BD antes de cualquier actualización
+			var currentEmployee rModels.MrEmployee
+			if err := m.db.Where("id = ?", employee.ID).Select("active").First(&currentEmployee).Error; err != nil {
+				m.logger.Warn("Failed to read current active status, using cached value",
+					zap.Error(err),
+					zap.Uint("employee_id", employee.ID))
+				currentEmployee.Active = employee.Active
+			}
+			
+			wasActive := currentEmployee.Active
+			m.logger.Info("📊 [SyncUser] Estado actual del usuario leído de BD (por email)",
+				zap.Uint("employee_id", employee.ID),
+				zap.String("email", employee.Email),
+				zap.Bool("was_active", wasActive))
+			
 			updateData := map[string]interface{}{
 				"authentik_id": userInfo.Sub,
 				"first_name":   extractFirstName(userInfo.Name),
 				"last_name":    extractLastName(userInfo.Name),
-				"active":       true,
 				"updated_at":   now,
+			}
+			// ✅ NO actualizar 'active' si el usuario estaba bloqueado
+			// Solo actualizar 'active' a true si el usuario ya estaba activo
+			if wasActive {
+				updateData["active"] = true
+				m.logger.Info("✅ [SyncUser] Usuario activo, manteniendo estado activo (por email)",
+					zap.Uint("employee_id", employee.ID),
+					zap.String("email", employee.Email))
+			} else {
+				// Usuario bloqueado - NO cambiar el estado
+				m.logger.Warn("🚫 [SyncUser] Usuario bloqueado, manteniendo estado bloqueado (por email)",
+					zap.Uint("employee_id", employee.ID),
+					zap.String("email", employee.Email),
+					zap.Bool("was_active", wasActive))
 			}
 
 			if newIDN := extractIDNFromOrganization(userInfo.Organization); newIDN != "" {
@@ -111,12 +235,43 @@ func (m *repository) SyncUser(userInfo *rModels.AuthentikUserInfo) (*rModels.MrE
 
 	} else if result.Error == nil {
 		// Empleado existe por AuthentikID - ACTUALIZAR
+		// ✅ CRÍTICO: Leer el estado 'active' DIRECTAMENTE de la BD antes de cualquier actualización
+		// Esto evita que se actualice el estado si el usuario está bloqueado
+		var currentEmployee rModels.MrEmployee
+		if err := m.db.Where("id = ?", employee.ID).Select("active").First(&currentEmployee).Error; err != nil {
+			m.logger.Warn("Failed to read current active status, using cached value",
+				zap.Error(err),
+				zap.Uint("employee_id", employee.ID))
+			currentEmployee.Active = employee.Active
+		}
+		
+		wasActive := currentEmployee.Active
+		m.logger.Info("📊 [SyncUser] Estado actual del usuario leído de BD",
+			zap.Uint("employee_id", employee.ID),
+			zap.String("email", employee.Email),
+			zap.Bool("was_active", wasActive))
+		
 		updateData := map[string]interface{}{
 			"first_name": extractFirstName(userInfo.Name),
 			"last_name":  extractLastName(userInfo.Name),
 			"email":      userInfo.Email,
-			"active":     true,
 			"updated_at": now,
+		}
+		// ✅ NO actualizar 'active' si el usuario estaba bloqueado
+		// Solo actualizar 'active' a true si el usuario ya estaba activo
+		// Si estaba bloqueado (active = false), mantenerlo bloqueado
+		if wasActive {
+			updateData["active"] = true
+			m.logger.Info("✅ [SyncUser] Usuario activo, manteniendo estado activo",
+				zap.Uint("employee_id", employee.ID),
+				zap.String("email", employee.Email))
+		} else {
+			// Usuario bloqueado - NO cambiar el estado
+			// No incluir 'active' en el updateData para mantener el valor actual
+			m.logger.Warn("🚫 [SyncUser] Usuario bloqueado, manteniendo estado bloqueado",
+				zap.Uint("employee_id", employee.ID),
+				zap.String("email", employee.Email),
+				zap.Bool("was_active", wasActive))
 		}
 
 		if employee.IDN == "" {

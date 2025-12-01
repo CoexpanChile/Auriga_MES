@@ -4,17 +4,17 @@ app:
   name: Auriga_API
   version: 0.0.1
 database:
-  host: 192.168.122.211
+  host: 18.213.58.26
   port: 33307
-  user: jr
-  password: lHevDgr_aqHDlBOpQirf28
-  name: CXP_installed_base
-  timezone: Europe/Madrid #UTC
+  user: tdcx
+  password: VwFODDerW8PK_vsAq6Fs31
+  name: CX_OT_CX
+  timezone: UTC #UTC
 grafana1:
-  host: 192.168.122.211
+  host: 18.213.58.26
   port: 33003
 grafana2:
-  host: 192.168.122.211
+  host: 18.213.58.26
   port: 33001
 influxdbs:
   CXB:
@@ -24,7 +24,7 @@ influxdbs:
     org: CXB
     bucket: CXB
   CXC:
-    host: 200.75.2.109
+    host: 10.80.50.46
     port: 38086
     token: TYzPrJX5qlJ2o47y6ZqTRRgc3pzjA_kuDgYTkAeCaP9Z-pFaNo6a3ZGlQr2lBKxUkET7vjhgusNS3FtXUzlTEw==
     org: CXC
@@ -90,7 +90,7 @@ auth:
   issuer: "http://18.232.248.24:38006"
   client_id: "EGngNT1YYHtfLVGuKvzUaN17X3IWr7ssbUrdJB7H"
   client_secret: "nMiUhscV21vBmhZ4r69Uju8k6TojXkYlQiqcIgTZRHamzV1nlj4mNxh9Krpl0tuZ54RylMvwENK1rYf3hn0gHzrM2ay5hVcd04wDlElSee5Ku02RirCd1lq8ka1WZOhM"
-  redirect_url: "http://192.168.122.211:8081/auth/callback"
+  redirect_url: "http://18.213.58.26:8081/auth/callback"
   jwks_endpoint: "http://18.232.248.24:38006/application/o/cx-auriga/jwks/"
   jwks_cache_ttl: 1h
   token_cache_ttl: 5m

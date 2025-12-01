@@ -52,10 +52,9 @@ func (h *handler) RegisterRoutes(e *echo.Echo, s *config.Settings) {
 	e.POST("/auth/logout", h.logoutHandler)
 	e.GET("/auth/callback", h.authCallbackHandler)
 
-	// ✅ NUEVA: Endpoint para obtener información del usuario desde React
-	e.GET("/api/auth/user", h.getCurrentUserHandler)
-	// ✅ NUEVO: Endpoint para verificar autenticación desde React
+	// ✅ NUEVA: Endpoint para verificar autenticación desde React (público, verifica cookies)
 	e.GET("/api/auth/check", h.authCheckHandler)
+	// NOTA: /api/auth/user y /api/auth/permissions están en el grupo /api protegido más abajo
 
 	// ✅ Dashboard protegido - CREAR GRUPO SEPARADO PARA RUTAS PROTEGIDAS NO-API
 	protected := e.Group("")
@@ -74,6 +73,13 @@ func (h *handler) RegisterRoutes(e *echo.Echo, s *config.Settings) {
 	api.GET("/token-info", h.tokenInfoHandler)
 	//api.GET("/token-debug", h.debugTokenHandler)
 	api.GET("/my-groups", h.myGroupsHandler)
+	
+	// ✅ Endpoints de autenticación (requieren autenticación)
+	api.GET("/auth/user", h.getCurrentUserHandler)
+	
+	// ✅ Endpoints de permisos (requieren autenticación)
+	api.GET("/auth/permissions", h.permissionsHandler)
+	api.GET("/auth/check-permission", h.checkPermissionHandler)
 
 	// ✅ Rutas solo para Administradores
 	admin := api.Group("/admin")

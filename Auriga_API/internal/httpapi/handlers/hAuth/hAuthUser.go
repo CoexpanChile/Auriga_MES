@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -546,66 +547,264 @@ func (h *handler) healthHandler(c echo.Context) error {
 }
 
 func (h *handler) loginHandler(c echo.Context) error {
+	h.logger.Info("🔐 [LOGIN] Iniciando proceso de login",
+		zap.String("remote_ip", c.RealIP()),
+		zap.String("user_agent", c.Request().UserAgent()),
+		zap.String("path", c.Request().URL.Path))
+
 	// Verificar si ya está autenticado mirando la cookie
 	cookie, err := c.Cookie("auth_token")
 	if err == nil && cookie.Value != "" {
+		h.logger.Info("🔐 [LOGIN] Cookie auth_token encontrada, validando token",
+			zap.String("cookie_length", fmt.Sprintf("%d", len(cookie.Value))),
+			zap.String("cookie_path", cookie.Path),
+			zap.String("cookie_domain", cookie.Domain))
+
 		// Validar el token
 		token, err := h.service.ValidateToken(cookie.Value)
 		if err == nil && token.Valid {
+			h.logger.Info("✅ [LOGIN] Token válido encontrado, redirigiendo al dashboard",
+				zap.String("token_valid", "true"))
 			// Si ya tiene token válido, redirigir al frontend
-			frontendURL := "http://192.168.122.211:5826/dashboard"
+			frontendURL := "http://18.213.58.26:5826/dashboard"
 			return c.Redirect(http.StatusFound, frontendURL)
+		} else {
+			h.logger.Warn("⚠️ [LOGIN] Token inválido o expirado",
+				zap.Error(err),
+				zap.Bool("token_valid", err == nil && token != nil && token.Valid))
 		}
+	} else {
+		h.logger.Info("🔐 [LOGIN] No se encontró cookie auth_token",
+			zap.Error(err),
+			zap.String("error_type", fmt.Sprintf("%T", err)))
 	}
+
+	// Listar todas las cookies recibidas
+	allCookies := c.Cookies()
+	h.logger.Info("🔐 [LOGIN] Cookies recibidas",
+		zap.Int("total_cookies", len(allCookies)),
+		zap.Any("cookie_names", func() []string {
+			names := make([]string, len(allCookies))
+			for i, c := range allCookies {
+				names[i] = c.Name
+			}
+			return names
+		}()))
 
 	state, err := generateState()
 	if err != nil {
-		h.logger.Error("Failed to generate state", zap.Error(err))
+		h.logger.Error("❌ [LOGIN] Error al generar state", zap.Error(err))
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate state")
 	}
 
-	authURL := h.service.GetAuthURL(state)
+	// Verificar si se requiere forzar nuevo login (para evitar bucles con usuarios bloqueados)
+	prompt := c.QueryParam("prompt")
+	forceNewLoginParam := c.QueryParam("force_new_login")
+	clearedParam := c.QueryParam("_cleared")
+	forceNewLogin := forceNewLoginParam == "true" || clearedParam == "1"
+
+	h.logger.Info("🔍 [LOGIN] Verificando parámetros de login forzado",
+		zap.String("prompt", prompt),
+		zap.String("force_new_login", forceNewLoginParam),
+		zap.String("_cleared", clearedParam),
+		zap.Bool("forceNewLogin", forceNewLogin),
+		zap.Bool("prompt_is_login", prompt == "login"))
+
+	var authURL string
+
+	if forceNewLogin || prompt == "login" {
+		// Usar GetAuthURLForNewLogin que combina:
+		// - prompt=login select_account: Fuerza login y muestra selector
+		// - max_age=0: Invalida cualquier sesión existente en Authentik
+		// Esto asegura que Authentik cierre su sesión y muestre pantalla de login
+		authURL = h.service.GetAuthURLForNewLogin(state)
+
+		// Agregar parámetro adicional para forzar logout
+		// Algunos proveedores OIDC respetan este parámetro
+		if strings.Contains(authURL, "?") {
+			authURL += "&logout=true"
+		} else {
+			authURL += "?logout=true"
+		}
+
+		h.logger.Info("🔀 [LOGIN] Redirigiendo a Authentik con prompt=login select_account, max_age=0 y logout=true (forzar cierre de sesión y nuevo login)",
+			zap.String("auth_url", authURL),
+			zap.String("state", state),
+			zap.Bool("force_new_login", forceNewLogin))
+	} else if prompt != "" {
+		authURL = h.service.GetAuthURLWithPrompt(state, prompt)
+		h.logger.Info("🔀 [LOGIN] Redirigiendo a Authentik con prompt personalizado",
+			zap.String("auth_url", authURL),
+			zap.String("state", state),
+			zap.String("prompt", prompt))
+	} else {
+		authURL = h.service.GetAuthURL(state)
+		h.logger.Info("🔀 [LOGIN] Redirigiendo a Authentik",
+			zap.String("auth_url", authURL),
+			zap.String("state", state))
+	}
 	return c.Redirect(http.StatusFound, authURL)
 }
 
 func (h *handler) authCallbackHandler(c echo.Context) error {
+	h.logger.Info("🔄 [CALLBACK] Recibido callback de Authentik",
+		zap.String("remote_ip", c.RealIP()),
+		zap.String("user_agent", c.Request().UserAgent()),
+		zap.String("full_url", c.Request().URL.String()))
+
 	code := c.QueryParam("code")
 	if code == "" {
-		h.logger.Warn("OAuth callback missing code parameter")
+		h.logger.Warn("❌ [CALLBACK] OAuth callback missing code parameter",
+			zap.String("query_params", c.Request().URL.RawQuery))
 		return echo.NewHTTPError(http.StatusBadRequest, "Missing code parameter")
 	}
+	h.logger.Info("✅ [CALLBACK] Código OAuth recibido",
+		zap.String("code_length", fmt.Sprintf("%d", len(code))),
+		zap.String("code_preview", code[:min(10, len(code))]+"..."))
 
 	state := c.QueryParam("state")
 	if state == "" {
-		h.logger.Warn("OAuth callback missing state parameter")
+		h.logger.Warn("❌ [CALLBACK] OAuth callback missing state parameter")
 		return echo.NewHTTPError(http.StatusBadRequest, "Missing state parameter")
 	}
+	h.logger.Info("✅ [CALLBACK] State recibido", zap.String("state", state))
 
 	// Intercambiar código por tokens
+	h.logger.Info("🔄 [CALLBACK] Intercambiando código por tokens...")
 	token, err := h.service.ExchangeCode(c.Request().Context(), code)
 	if err != nil {
-		h.logger.Error("Failed to exchange code for token", zap.Error(err))
+		// Verificar si el error es "invalid_grant" (código ya usado o expirado)
+		errStr := err.Error()
+		if strings.Contains(errStr, "invalid_grant") {
+			h.logger.Warn("⚠️ [CALLBACK] Código OAuth ya usado o expirado",
+				zap.Error(err),
+				zap.String("code_preview", code[:min(10, len(code))]+"..."))
+			// Redirigir al login en lugar de devolver error 500
+			// Esto evita que el navegador reintente con el mismo código
+			frontendURL := "http://18.213.58.26:5826/login?error=code_expired"
+			return c.Redirect(http.StatusFound, frontendURL)
+		}
+		h.logger.Error("❌ [CALLBACK] Error al intercambiar código por token",
+			zap.Error(err),
+			zap.String("error_type", fmt.Sprintf("%T", err)))
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			"Failed to exchange code: "+err.Error())
 	}
+	h.logger.Info("✅ [CALLBACK] Token recibido de Authentik",
+		zap.String("token_type", token.TokenType),
+		zap.Time("expires_at", token.Expiry),
+		zap.String("access_token_length", fmt.Sprintf("%d", len(token.AccessToken))),
+		zap.Bool("has_refresh_token", token.RefreshToken != ""),
+		zap.Any("token_extra_keys", func() []string {
+			keys := make([]string, 0)
+			if extraMap, ok := token.Extra("").(map[string]interface{}); ok {
+				for k := range extraMap {
+					keys = append(keys, k)
+				}
+			}
+			return keys
+		}()))
 
 	// Obtener información del usuario
+	h.logger.Info("🔄 [CALLBACK] Obteniendo información del usuario...")
 	userInfo, err := h.service.GetUserInfo(c.Request().Context(), token)
 	if err != nil {
-		h.logger.Error("Failed to get user info", zap.Error(err))
+		h.logger.Error("❌ [CALLBACK] Error al obtener información del usuario",
+			zap.Error(err))
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			"Failed to get user info: "+err.Error())
 	}
+	h.logger.Info("✅ [CALLBACK] Información del usuario obtenida",
+		zap.String("user_id", userInfo.Sub),
+		zap.String("email", userInfo.Email),
+		zap.String("name", userInfo.Name))
 
 	// Sincronizar empleado con la base de datos
+	h.logger.Info("🔄 [CALLBACK] Sincronizando empleado con la base de datos...")
 	employee, err := h.service.SyncUser(userInfo)
 	if err != nil {
-		h.logger.Error("Failed to sync employee",
+		h.logger.Error("❌ [CALLBACK] Error al sincronizar empleado",
 			zap.Error(err),
 			zap.String("user_id", userInfo.Sub))
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			"Failed to sync employee: "+err.Error())
 	}
+
+	// ✅ VALIDAR QUE EL USUARIO ESTÉ ACTIVO
+	if !employee.Active {
+		h.logger.Warn("🚫 [CALLBACK] Intento de login de usuario bloqueado",
+			zap.Uint("employee_id", employee.ID),
+			zap.String("employee_email", employee.Email),
+			zap.String("user_id", userInfo.Sub))
+
+		// LIMPIAR TODAS LAS COOKIES antes de redirigir
+		// Esto evita que el navegador mantenga información de sesión
+		cookiesToClear := []string{"auth_token", "user_data", "session_active"}
+		for _, cookieName := range cookiesToClear {
+			// Limpiar cookie con múltiples variantes para asegurar eliminación
+			// Variante 1: Path /, sin dominio
+			cookie1 := &http.Cookie{
+				Name:     cookieName,
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1,
+				Expires:  time.Unix(0, 0),
+				HttpOnly: true,
+				Secure:   false,
+			}
+			c.SetCookie(cookie1)
+
+			// Variante 2: Path /, con dominio
+			cookie2 := &http.Cookie{
+				Name:     cookieName,
+				Value:    "",
+				Path:     "/",
+				Domain:   "",
+				MaxAge:   -1,
+				Expires:  time.Unix(0, 0),
+				HttpOnly: false, // También limpiar versión no-httponly
+				Secure:   false,
+			}
+			c.SetCookie(cookie2)
+
+			h.logger.Debug("🗑️ [CALLBACK] Cookies eliminadas (múltiples variantes)",
+				zap.String("cookie_name", cookieName))
+		}
+
+		// Agregar headers para prevenir caché
+		c.Response().Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		c.Response().Header().Set("Pragma", "no-cache")
+		c.Response().Header().Set("Expires", "0")
+
+		// SOLUCIÓN: Redirigir primero al logout de Authentik para cerrar la sesión explícitamente
+		// El logout redirigirá al frontend con error, y luego el frontend podrá iniciar nuevo login
+
+		// Obtener el id_token si está disponible (para el logout de Authentik)
+		var idTokenHint string
+		if idToken, ok := token.Extra("id_token").(string); ok && idToken != "" {
+			idTokenHint = idToken
+			h.logger.Debug("🔑 [CALLBACK] id_token encontrado para logout",
+				zap.String("id_token_length", fmt.Sprintf("%d", len(idTokenHint))))
+		}
+
+		// SOLUCIÓN: Redirigir a la vista general de Authentik en lugar del frontend
+		// Esto permite al usuario:
+		// 1. Ver que se ha cerrado sesión de cx-auriga
+		// 2. Seleccionar "Volver a la vista general" para elegir otra aplicación (paperless, etc.)
+		// 3. O seleccionar "Volver a iniciar sesión cx-auriga" para intentar con otro usuario
+		logoutURL := h.service.GetLogoutURLToAuthentikOverview(idTokenHint)
+		h.logger.Info("🚪 [CALLBACK] Redirigiendo a logout de Authentik para cerrar sesión del usuario bloqueado y volver a vista general",
+			zap.String("logout_url", logoutURL),
+			zap.Bool("has_id_token", idTokenHint != ""),
+			zap.String("reason", "Usuario bloqueado - redirigiendo a vista general de Authentik"))
+
+		return c.Redirect(http.StatusFound, logoutURL)
+	}
+
+	h.logger.Info("✅ [CALLBACK] Empleado sincronizado",
+		zap.Uint("employee_id", employee.ID),
+		zap.String("authentik_id", employee.AuthentikID),
+		zap.String("email", employee.Email))
 
 	// Calcular expiración de la cookie
 	tokenExpiry := token.Expiry
@@ -662,14 +861,36 @@ func (h *handler) authCallbackHandler(c echo.Context) error {
 	}
 	c.SetCookie(sessionCookie)
 
-	h.logger.Info("User authenticated and cookies set",
+	h.logger.Info("✅ [CALLBACK] Usuario autenticado y cookies establecidas",
 		zap.String("authentik_id", userInfo.Sub),
 		zap.Uint("employee_id", employee.ID),
-		zap.String("email", employee.Email))
+		zap.String("email", employee.Email),
+		zap.Int("cookie_max_age", maxAge),
+		zap.Time("cookie_expires", tokenExpiry),
+		zap.String("cookie_path", "/"),
+		zap.Bool("cookie_http_only", true),
+		zap.Bool("cookie_secure", false),
+		zap.String("cookie_same_site", "Lax"))
+
+	// Listar todas las cookies que se están estableciendo
+	h.logger.Info("🍪 [CALLBACK] Cookies establecidas",
+		zap.String("auth_token_set", "true"),
+		zap.String("user_data_set", "true"),
+		zap.String("session_active_set", "true"))
 
 	// ✅ REDIRIGIR AL FRONTEND REACT
-	frontendURL := "http://192.168.122.211:5826/dashboard"
+	frontendURL := "http://18.213.58.26:5826/dashboard"
+	h.logger.Info("🔀 [CALLBACK] Redirigiendo al frontend",
+		zap.String("frontend_url", frontendURL))
 	return c.Redirect(http.StatusFound, frontendURL)
+}
+
+// Función helper para min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (h *handler) homeHandler(c echo.Context) error {
@@ -684,11 +905,30 @@ func (h *handler) homeHandler(c echo.Context) error {
 
 // Handler para verificar autenticación desde React
 func (h *handler) authCheckHandler(c echo.Context) error {
+	h.logger.Info("🔍 [AUTH_CHECK] Verificando autenticación",
+		zap.String("remote_ip", c.RealIP()),
+		zap.String("user_agent", c.Request().UserAgent()),
+		zap.String("path", c.Path()),
+		zap.String("method", c.Request().Method))
+
+	// Listar todas las cookies recibidas
+	allCookies := c.Cookies()
+	h.logger.Info("🍪 [AUTH_CHECK] Cookies recibidas",
+		zap.Int("total_cookies", len(allCookies)),
+		zap.Any("cookie_names", func() []string {
+			names := make([]string, len(allCookies))
+			for i, c := range allCookies {
+				names[i] = c.Name
+			}
+			return names
+		}()))
+
 	// Verificar si hay token en cookie
 	cookie, err := c.Cookie("auth_token")
 	if err != nil || cookie.Value == "" {
-		h.logger.Debug("No auth_token cookie found",
+		h.logger.Warn("⚠️ [AUTH_CHECK] No se encontró cookie auth_token",
 			zap.Error(err),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
 			zap.String("path", c.Path()))
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"authenticated": false,
@@ -696,11 +936,20 @@ func (h *handler) authCheckHandler(c echo.Context) error {
 		})
 	}
 
+	h.logger.Info("✅ [AUTH_CHECK] Cookie auth_token encontrada",
+		zap.String("cookie_length", fmt.Sprintf("%d", len(cookie.Value))),
+		zap.String("cookie_path", cookie.Path),
+		zap.String("cookie_domain", cookie.Domain),
+		zap.Time("cookie_expires", cookie.Expires))
+
 	// Validar el token
+	h.logger.Info("🔄 [AUTH_CHECK] Validando token...")
 	token, err := h.service.ValidateToken(cookie.Value)
 	if err != nil || !token.Valid {
-		h.logger.Debug("Invalid token",
+		h.logger.Warn("❌ [AUTH_CHECK] Token inválido o expirado",
 			zap.Error(err),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
+			zap.Bool("token_valid", err == nil && token != nil && token.Valid),
 			zap.String("path", c.Path()))
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"authenticated": false,
@@ -708,12 +957,27 @@ func (h *handler) authCheckHandler(c echo.Context) error {
 		})
 	}
 
+	h.logger.Info("✅ [AUTH_CHECK] Token válido",
+		zap.String("token_valid", "true"))
+
 	// Obtener información del usuario desde el contexto
 	userID, userEmail, userName, userGroups, organization := getUserInfoFromContext(c)
 
-	h.logger.Debug("User authenticated successfully",
+	h.logger.Info("✅ [AUTH_CHECK] Usuario autenticado exitosamente",
 		zap.String("user_id", userID),
+		zap.String("user_email", userEmail),
+		zap.String("user_name", userName),
+		zap.Int("user_groups_count", len(userGroups)),
+		zap.Strings("user_groups", userGroups),
+		zap.Bool("has_organization", organization != nil),
 		zap.String("path", c.Path()))
+
+	if organization != nil {
+		h.logger.Info("📋 [AUTH_CHECK] Información de organización",
+			zap.String("org_name", getOrganizationName(organization)),
+			zap.Strings("factory_names", getUserFactoryNames(organization)),
+			zap.Int("total_roles", len(getAllUserRoles(organization))))
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"authenticated": true,

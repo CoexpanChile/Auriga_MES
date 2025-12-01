@@ -12,6 +12,24 @@ import (
 
 type Repository interface {
 	OrderConsumptionCalculate(factory string, prodline string, components []MriDosingComponent, startedAt time.Time, finishedAt time.Time) ([]MriDosingComponent, error)
+	GetLineStatus(factory string, lineCode string) (string, float64, error)
+	GetLinesStatus(factory string, lineCodes []string) (map[string]LineStatusResponse, error)
+	GetLineThroughput(factory string, lineCode string, startTime time.Time, stopTime time.Time, windowPeriod string) ([]ThroughputData, error)
+}
+
+// LineStatusResponse representa el estado de una línea
+type LineStatusResponse struct {
+	LineCode   string    `json:"line_code"`
+	Status     string    `json:"status"` // "operativa", "apagada", "unknown"
+	LastSeen   time.Time `json:"last_seen"`
+	Throughput float64   `json:"throughput"` // Throughput más reciente en kg/h
+}
+
+// ThroughputData representa los datos de throughput de una línea
+type ThroughputData struct {
+	Time     time.Time `json:"time"`
+	Value    float64   `json:"value"`
+	LineCode string    `json:"line_code"`
 }
 
 type repository struct {

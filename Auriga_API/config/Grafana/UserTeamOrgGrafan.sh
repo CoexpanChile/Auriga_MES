@@ -13,7 +13,7 @@
 set -e
 
 # Configuración
-GRAFANA_URL="http://192.168.122.211:33003"
+GRAFANA_URL="http://18.213.58.26:33003"
 ADMIN_USER="jr"
 ADMIN_PASSWORD="lHevDgr_aqHDlBOpQirf28"
 CONFIG_FILE="${1:-config.json}"
