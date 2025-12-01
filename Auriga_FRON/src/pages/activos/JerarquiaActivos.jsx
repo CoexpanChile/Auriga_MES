@@ -1,36 +1,63 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ChevronRight, ChevronDown, Factory, Loader2, Home, ArrowLeft, List, Grid3x3, Info, X, Search, Filter } from 'lucide-react'
+import { ChevronRight, ChevronDown, Factory, Loader2, Info, Search } from 'lucide-react'
 import { Card } from '../../components/ui/Card'
 import { AssetDetailPanel } from '../../components/AssetDetailPanel'
 import { api } from '../../lib/api'
 import { useLanguage } from '../../context/LanguageContext'
+import { usePermissions } from '../../hooks/usePermissions'
 
 function JerarquiaActivos() {
   const navigate = useNavigate()
   const location = useLocation()
   const { t } = useLanguage()
+  const { permissions, checkFactoryAccess } = usePermissions()
   
   // Obtener fábrica seleccionada desde localStorage (sin prefijo en URL)
-  const selectedFactory = useMemo(() => {
+  // Usar useState para que se actualice cuando cambie
+  // Validar que el usuario tenga acceso a la fábrica seleccionada
+  const getSelectedFactory = () => {
     const saved = localStorage.getItem('selectedFactory')
-    // Si es 'CX' o null, significa vista global
-    return saved && saved !== 'CX' ? saved : null
-  }, [])
+    if (!saved) return null
+    
+    // Si es 'CX', verificar que el usuario tenga acceso
+    if (saved === 'CX') {
+      // Verificar permisos si están disponibles
+      if (permissions) {
+        const hasCXAccess = checkFactoryAccess('CX')
+        if (!hasCXAccess) {
+          // Si no tiene acceso a CX, limpiar la selección
+          localStorage.removeItem('selectedFactory')
+          return null
+        }
+      }
+      return null // 'CX' se maneja como null para vista global
+    }
+    
+    // Para otras fábricas, verificar acceso si los permisos están disponibles
+    if (permissions) {
+      const hasAccess = checkFactoryAccess(saved)
+      if (!hasAccess) {
+        // Si no tiene acceso, limpiar la selección
+        localStorage.removeItem('selectedFactory')
+        return null
+      }
+    }
+    
+    return saved
+  }
   
+  const [selectedFactory, setSelectedFactory] = useState(getSelectedFactory())
   const [hierarchies, setHierarchies] = useState({})
   const [currentNode, setCurrentNode] = useState(null)
-  const [breadcrumbs, setBreadcrumbs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [viewMode, setViewMode] = useState('tree')
   const [expandedNodes, setExpandedNodes] = useState(new Set())
   const [selectedAssetId, setSelectedAssetId] = useState(null)
   const [assetDetails, setAssetDetails] = useState(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filterLevel, setFilterLevel] = useState(null)
 
   // Hook para responsive
   useEffect(() => {
@@ -44,7 +71,96 @@ function JerarquiaActivos() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // Revalidar selectedFactory cuando cambien los permisos
   useEffect(() => {
+    if (permissions) {
+      const saved = localStorage.getItem('selectedFactory')
+      if (!saved) {
+        if (selectedFactory) setSelectedFactory(null)
+        return
+      }
+      
+      // Si es 'CX', verificar que el usuario tenga acceso
+      if (saved === 'CX') {
+        const hasCXAccess = checkFactoryAccess('CX')
+        if (!hasCXAccess && selectedFactory) {
+          localStorage.removeItem('selectedFactory')
+          setSelectedFactory(null)
+        }
+      } else {
+        // Para otras fábricas, verificar acceso
+        const hasAccess = checkFactoryAccess(saved)
+        if (!hasAccess) {
+          localStorage.removeItem('selectedFactory')
+          if (selectedFactory) setSelectedFactory(null)
+        } else if (selectedFactory !== saved) {
+          setSelectedFactory(saved)
+        }
+      }
+    }
+  }, [permissions, checkFactoryAccess, selectedFactory])
+
+  // Escuchar cambios en localStorage para actualizar selectedFactory
+  useEffect(() => {
+    const handleFactoryChange = () => {
+      const saved = localStorage.getItem('selectedFactory')
+      if (!saved) {
+        setSelectedFactory(null)
+        return
+      }
+      
+      // Validar acceso antes de actualizar
+      if (permissions) {
+        if (saved === 'CX') {
+          const hasCXAccess = checkFactoryAccess('CX')
+          if (!hasCXAccess) {
+            localStorage.removeItem('selectedFactory')
+            setSelectedFactory(null)
+            return
+          }
+        } else {
+          const hasAccess = checkFactoryAccess(saved)
+          if (!hasAccess) {
+            localStorage.removeItem('selectedFactory')
+            setSelectedFactory(null)
+            return
+          }
+        }
+      }
+      
+      const newFactory = saved === 'CX' ? null : saved
+      setSelectedFactory(prevFactory => {
+        if (newFactory !== prevFactory) {
+          return newFactory
+        }
+        return prevFactory
+      })
+    }
+
+    // Escuchar evento storage (cuando cambia en otra pestaña/ventana)
+    const handleStorageChange = (e) => {
+      if (e.key === 'selectedFactory') {
+        handleFactoryChange()
+      }
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('factoryChanged', handleFactoryChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('factoryChanged', handleFactoryChange)
+    }
+  }, [permissions, checkFactoryAccess])
+
+  useEffect(() => {
+    // Limpiar estado cuando cambia la fábrica
+    setCurrentNode(null)
+    setSelectedAssetId(null)
+    setAssetDetails(null)
+    setExpandedNodes(new Set())
+    setSearchQuery('')
+    // Recargar jerarquías
     loadHierarchies()
   }, [selectedFactory])
 
@@ -57,90 +173,85 @@ function JerarquiaActivos() {
     }
   }, [selectedAssetId])
 
-  // Construir jerarquía desde la lista de assets
+  // Construir jerarquía desde la lista de assets usando ParentID
   const buildHierarchy = (assets) => {
     const hierarchies = {}
-    const nodeMap = new Map() // Para evitar duplicados
     
-    // Agrupar assets por fábrica (primer elemento del hierarchical_level)
-    assets.forEach(asset => {
-      if (!asset.hierarchical_level || asset.hierarchical_level.length === 0) {
-        return
+    if (!assets || !Array.isArray(assets) || assets.length === 0) {
+      console.warn('buildHierarchy: No assets provided or empty array')
+      return hierarchies
+    }
+    
+    console.log('Building hierarchy from', assets.length, 'assets')
+    console.log('Sample asset structure:', assets[0])
+    
+    // Normalizar campos (soporta mayúsculas y minúsculas)
+    const normalizeAsset = (asset) => {
+      return {
+        id: asset.ID !== undefined ? asset.ID : asset.id,
+        parentId: asset.ParentID !== undefined ? asset.ParentID : asset.ParentId !== undefined ? asset.ParentId : asset.parentId !== undefined ? asset.parentId : asset.parent_id,
+        code: asset.Code !== undefined ? asset.Code : asset.code,
+        name: asset.Name !== undefined ? asset.Name : asset.name,
+        location: asset.Location !== undefined ? asset.Location : asset.location,
+        factory: asset.Factory !== undefined ? asset.Factory : asset.factory,
+        ...asset // Mantener todos los campos originales
+      }
+    }
+    
+    // Normalizar todos los assets
+    const normalizedAssets = assets.map(normalizeAsset)
+    
+    // Crear mapa de assets por ID para acceso rápido
+    const assetMap = new Map()
+    normalizedAssets.forEach(asset => {
+      if (asset.id != null) {
+        assetMap.set(asset.id, { ...asset, children: [] })
+      }
+    })
+    
+    console.log('Asset map created with', assetMap.size, 'assets')
+    
+    // Identificar nodos raíz (sin padre o ParentID === null)
+    const rootNodes = []
+    normalizedAssets.forEach(asset => {
+      if (asset.id != null && (asset.parentId == null || asset.parentId === null || asset.parentId === '')) {
+        rootNodes.push(asset)
+      }
+    })
+    
+    console.log('Root nodes found:', rootNodes.length)
+    rootNodes.forEach(root => {
+      console.log('  - Root:', root.code, 'ID:', root.id)
+    })
+    
+    // Función recursiva para construir el árbol
+    const buildTree = (asset) => {
+      const node = assetMap.get(asset.id)
+      if (!node) return null
+      
+      // Buscar todos los hijos de este nodo
+      const children = normalizedAssets
+        .filter(child => {
+          const childParentId = child.parentId
+          return childParentId != null && childParentId === asset.id
+        })
+        .map(child => buildTree(child))
+        .filter(Boolean) // Remover nulls
+      
+      if (children.length > 0) {
+        node.children = children
       }
       
-      const factoryCode = asset.hierarchical_level[0]
-      
-      // Crear nodo raíz de fábrica si no existe
-      if (!hierarchies[factoryCode]) {
-        hierarchies[factoryCode] = {
-          id: factoryCode,
-          code: factoryCode,
-          location: factoryCode,
-          hierarchical_level: [factoryCode],
-          children: []
-        }
-        nodeMap.set(factoryCode, hierarchies[factoryCode])
-      }
-      
-      // Construir la jerarquía anidada nivel por nivel
-      let currentLevel = hierarchies[factoryCode]
-      
-      for (let i = 1; i < asset.hierarchical_level.length; i++) {
-        const levelCode = asset.hierarchical_level[i]
-        const nodePath = asset.hierarchical_level.slice(0, i + 1).join('-')
-        
-        // Buscar si el nodo ya existe usando el path completo como key
-        let child = nodeMap.get(nodePath)
-        
-        if (!child) {
-          // Crear nuevo nodo intermedio
-          child = {
-            id: nodePath,
-            code: levelCode,
-            location: asset.location || '',
-            hierarchical_level: asset.hierarchical_level.slice(0, i + 1),
-            children: []
-          }
-          
-          // Agregar al mapa para evitar duplicados
-          nodeMap.set(nodePath, child)
-          
-          // Agregar a children del nivel actual
-          if (!currentLevel.children) {
-            currentLevel.children = []
-          }
-          currentLevel.children.push(child)
-        }
-        
-        currentLevel = child
-      }
-      
-      // Agregar el asset como hoja (si no es solo un nodo intermedio)
-      // Solo agregamos si el asset tiene un ID único y no es el mismo que el nodo actual
-      if (asset.id && currentLevel.id !== asset.id.toString()) {
-        const assetNodeId = `${currentLevel.id}-${asset.id}`
-        
-        // Verificar si el asset ya fue agregado como hoja
-        if (!nodeMap.has(assetNodeId)) {
-          const leafNode = {
-            id: asset.id,
-            code: asset.code || asset.name || asset.hierarchical_level[asset.hierarchical_level.length - 1],
-            location: asset.location || '',
-            hierarchical_level: asset.hierarchical_level,
-            ...asset
-          }
-          
-          nodeMap.set(assetNodeId, leafNode)
-          
-          if (!currentLevel.children) {
-            currentLevel.children = []
-          }
-          // Verificar si no existe ya este asset como hijo
-          const exists = currentLevel.children.some(c => c.id === asset.id)
-          if (!exists) {
-            currentLevel.children.push(leafNode)
-          }
-        }
+      return node
+    }
+    
+    // Construir árboles para cada nodo raíz
+    rootNodes.forEach(rootAsset => {
+      const tree = buildTree(rootAsset)
+      if (tree) {
+        // Usar el código del root como clave de fábrica
+        const factoryCode = rootAsset.code || rootAsset.factory || `ROOT_${rootAsset.id}`
+        hierarchies[factoryCode] = tree
       }
     })
     
@@ -158,6 +269,9 @@ function JerarquiaActivos() {
     
     Object.values(hierarchies).forEach(sortChildren)
     
+    console.log(`buildHierarchy completed: ${Object.keys(hierarchies).length} root hierarchies built`)
+    console.log('Factory keys:', Object.keys(hierarchies))
+    
     return hierarchies
   }
 
@@ -166,22 +280,67 @@ function JerarquiaActivos() {
       setLoading(true)
       setError(null)
       
-      // Usar /asset/list y construir la jerarquía en el cliente
-      const assets = await api.get('/asset/list') || []
-      
-      // Filtrar por fábrica si se especifica
-      let filteredAssets = assets
-      if (selectedFactory) {
-        filteredAssets = assets.filter(asset => {
-          const factoryCode = asset.hierarchical_level?.[0]
-          return factoryCode === selectedFactory || 
-                 asset.location?.includes(selectedFactory) ||
-                 asset.factory === selectedFactory
+      // Verificar autenticación antes de hacer la petición
+      try {
+        const authCheck = await fetch('/api/auth/check', {
+          credentials: 'include'
         })
+        if (!authCheck.ok) {
+          console.warn('Sesión no válida, redirigiendo a login...')
+          window.location.href = '/login'
+          return
+        }
+      } catch (authError) {
+        console.error('Error verificando autenticación:', authError)
+        window.location.href = '/login'
+        return
       }
+      
+      // Usar /asset/list y construir la jerarquía en el cliente
+      const response = await api.get('/asset/list')
+      
+      // La respuesta podría ser un array directo o un objeto con datos
+      let assets = []
+      if (Array.isArray(response)) {
+        assets = response
+      } else if (response && Array.isArray(response.data)) {
+        assets = response.data
+      } else if (response && response.assets && Array.isArray(response.assets)) {
+        assets = response.assets
+      } else if (response && typeof response === 'object') {
+        // Intentar extraer cualquier array del objeto
+        const keys = Object.keys(response)
+        const arrayKey = keys.find(key => Array.isArray(response[key]))
+        if (arrayKey) {
+          assets = response[arrayKey]
+        }
+      }
+      
+      console.log('API Response:', response)
+      console.log('Assets extracted:', assets.length, 'items')
+      console.log('First asset sample:', assets[0])
+      
+      if (assets.length === 0) {
+        console.warn('No assets found in response')
+        setHierarchies({})
+        setLoading(false)
+        return
+      }
+      
+      // Filtrar por fábrica si se especifica (después de construir la jerarquía)
+      // No filtramos antes porque necesitamos toda la jerarquía para construir correctamente
+      let filteredAssets = assets
+      console.log('Total assets before filtering:', filteredAssets.length)
       
       // Construir jerarquía desde los assets
       const hierarchies = buildHierarchy(filteredAssets)
+      
+      console.log('Hierarchies built:', Object.keys(hierarchies).length, 'factories')
+      console.log('Factory keys:', Object.keys(hierarchies))
+      
+      if (Object.keys(hierarchies).length === 0) {
+        console.warn('No hierarchies built from assets. Sample asset:', filteredAssets[0])
+      }
       
       // Si hay una fábrica seleccionada, solo incluir esa
       if (selectedFactory && hierarchies[selectedFactory]) {
@@ -192,7 +351,12 @@ function JerarquiaActivos() {
       
     } catch (err) {
       console.error('Error loading hierarchies:', err)
-      setError('Error de conexión')
+      console.error('Error details:', {
+        message: err.message,
+        stack: err.stack,
+        name: err.name
+      })
+      setError('Error de conexión: ' + (err.message || 'Desconocido'))
     } finally {
       setLoading(false)
     }
@@ -235,37 +399,6 @@ function JerarquiaActivos() {
     setSelectedAssetId(assetId)
   }
 
-  // Filtrar hijos según búsqueda y filtros
-  const filteredChildren = useMemo(() => {
-    if (!currentNode?.children) return []
-    
-    let filtered = currentNode.children
-    
-    if (searchQuery) {
-      filtered = filtered.filter(child =>
-        child.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        child.location?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    }
-    
-    if (filterLevel !== null) {
-      filtered = filtered.filter(child => 
-        (child.hierarchical_level?.length || 0) === filterLevel
-      )
-    }
-    
-    return filtered
-  }, [currentNode, searchQuery, filterLevel])
-
-  const getLevelColor = (level) => {
-    switch (level) {
-      case 0: return 'text-blue-400'
-      case 1: return 'text-green-400'
-      case 2: return 'text-yellow-400'
-      default: return 'text-gray-300'
-    }
-  }
-
   const toggleNode = (nodeId) => {
     setExpandedNodes(prev => {
       const newSet = new Set(prev)
@@ -294,6 +427,44 @@ function JerarquiaActivos() {
 
   const collapseAll = () => {
     setExpandedNodes(new Set())
+  }
+
+  const getLevelColor = (level) => {
+    switch (level) {
+      case 0: return 'text-blue-400'
+      case 1: return 'text-green-400'
+      case 2: return 'text-yellow-400'
+      default: return 'text-gray-300'
+    }
+  }
+
+  // Filtrar nodos según búsqueda
+  const filterNode = (node) => {
+    if (!node) return null
+    
+    if (searchQuery) {
+      const matchesSearch = 
+        node.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        node.location?.toLowerCase().includes(searchQuery.toLowerCase())
+      
+      if (matchesSearch) {
+        return { ...node, children: node.children?.map(filterNode).filter(Boolean) }
+      }
+      
+      if (node.children && node.children.length > 0) {
+        const filteredChildren = node.children.map(filterNode).filter(Boolean)
+        if (filteredChildren.length > 0) {
+          return { ...node, children: filteredChildren }
+        }
+      }
+      
+      return null
+    }
+    
+    return {
+      ...node,
+      children: node.children?.map(filterNode).filter(Boolean)
+    }
   }
 
   const renderTreeNode = (node, level = 0) => {
@@ -354,34 +525,6 @@ function JerarquiaActivos() {
   const renderFullTree = () => {
     const factoryList = Object.keys(hierarchies).sort()
     
-    const filterNode = (node) => {
-      if (!node) return null
-      
-      if (searchQuery) {
-        const matchesSearch = 
-          node.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          node.location?.toLowerCase().includes(searchQuery.toLowerCase())
-        
-        if (matchesSearch) {
-          return { ...node, children: node.children?.map(filterNode).filter(Boolean) }
-        }
-        
-        if (node.children && node.children.length > 0) {
-          const filteredChildren = node.children.map(filterNode).filter(Boolean)
-          if (filteredChildren.length > 0) {
-            return { ...node, children: filteredChildren }
-          }
-        }
-        
-        return null
-      }
-      
-      return {
-        ...node,
-        children: node.children?.map(filterNode).filter(Boolean)
-      }
-    }
-    
     return (
       <div className="space-y-0.5">
         {factoryList.map(factoryCode => {
@@ -437,17 +580,30 @@ function JerarquiaActivos() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-120px)] gap-4">
-      {/* Sidebar Izquierdo: Árbol de Jerarquía */}
-      <div className={`flex-shrink-0 bg-gray-900/50 rounded-lg border border-gray-800 overflow-hidden flex flex-col ${
-        !isMobile ? 'w-80' : 'w-full lg:w-96'
-      }`}>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="mb-4">
+        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+          <Factory size={32} />
+          {t.activos?.jerarquia?.title || t.activos?.jerarquia || 'Jerarquía de Activos'}
+        </h1>
+        <p className="text-gray-400 mt-2">
+          Explorar la estructura jerárquica de activos
+        </p>
+      </div>
+
+      {/* Contenido principal */}
+      <div className="flex h-[calc(100vh-200px)] gap-4 flex-1 min-h-0 px-2">
+        {/* Sidebar Izquierdo: Árbol de Jerarquía */}
+        <div className={`flex-shrink-0 bg-gray-900/50 rounded-lg border border-gray-800 overflow-hidden flex flex-col ${
+          !isMobile ? 'w-64' : 'w-full lg:w-72'
+        }`}>
         {/* Header del Sidebar */}
         <div className="px-3 py-2 border-b border-gray-800 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
               <Factory size={16} />
-              {t.activos?.jerarquia || 'Jerarquía'}
+              {t.activos?.jerarquia?.title || t.activos?.jerarquia || 'Jerarquía'}
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">Selecciona un activo</p>
           </div>
@@ -540,6 +696,7 @@ function JerarquiaActivos() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

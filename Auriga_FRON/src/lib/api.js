@@ -8,11 +8,29 @@ export const api = {
         ...options,
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
+          // No incluir Content-Type en GET requests (no tienen body)
           ...options.headers,
         },
         credentials: 'include', // Incluir cookies
       });
+
+      // Si recibimos 401, intentar verificar autenticación y redirigir si es necesario
+      if (response.status === 401) {
+        // Verificar si hay una sesión activa
+        const authCheck = await fetch(`${API_BASE_URL}/api/auth/check`, {
+          credentials: 'include'
+        })
+        
+        if (!authCheck.ok) {
+          // Si la verificación falla, redirigir a login
+          console.warn('Sesión expirada, redirigiendo a login...')
+          window.location.href = '/login'
+          throw new Error('Unauthorized - Sesión expirada')
+        }
+        
+        // Si la verificación es exitosa pero aún recibimos 401, lanzar error
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -38,6 +56,21 @@ export const api = {
         credentials: 'include',
         body: JSON.stringify(body),
       });
+
+      // Si recibimos 401, verificar autenticación y redirigir si es necesario
+      if (response.status === 401) {
+        const authCheck = await fetch(`${API_BASE_URL}/api/auth/check`, {
+          credentials: 'include'
+        })
+        
+        if (!authCheck.ok) {
+          console.warn('Sesión expirada, redirigiendo a login...')
+          window.location.href = '/login'
+          throw new Error('Unauthorized - Sesión expirada')
+        }
+        
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -82,7 +115,7 @@ export const api = {
         ...options,
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json',
+          // No incluir Content-Type en DELETE requests (no tienen body)
           ...options.headers,
         },
         credentials: 'include',
@@ -102,6 +135,8 @@ export const api = {
 };
 
 export default api;
+
+
 
 
 
