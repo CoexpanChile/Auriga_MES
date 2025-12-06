@@ -3,4 +3,4 @@
 config/settings.yml
 .vscode
 AurigaPassword.pem
-auriga-api_0.0.01.tar
+auriga-api_0.0.01.tar*.backup
