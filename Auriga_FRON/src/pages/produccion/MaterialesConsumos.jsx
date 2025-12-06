@@ -6,6 +6,14 @@ import { Badge } from '../../components/ui/Badge'
 import { api } from '../../lib/api'
 import { useLanguage } from '../../context/LanguageContext'
 
+// Importar hooks y componentes refactorizados
+import { useNotifications } from './MaterialesConsumos/hooks'
+import { Notifications } from './MaterialesConsumos/components/shared/Notifications'
+import { LoadingState, EmptyState } from './MaterialesConsumos/components/shared/LoadingState'
+import { PageHeader } from './MaterialesConsumos/components/shared/PageHeader'
+import LineCardOptimized from './MaterialesConsumos/components/LineSelector/LineCard'
+import DoserCardOptimized from './MaterialesConsumos/components/DoserManager/DoserCard'
+
 // Helper para debugging solo en desarrollo
 const isDev = import.meta.env.DEV
 const debug = {
@@ -259,15 +267,18 @@ RecipeComponentButton.displayName = 'RecipeComponentButton'
 function MaterialsConsumablesPage() {
   const { t } = useLanguage()
   const navigate = useNavigate()
-  
+
+  // Hook de notificaciones refactorizado
+  const { error, success, showError, showSuccess, clearError, clearSuccess } = useNotifications()
+
   const selectedFactory = useMemo(() => {
     const saved = localStorage.getItem('selectedFactory')
     return saved && saved !== 'CX' ? saved : null
   }, [])
-  
+
   const isGlobalView = !selectedFactory
-  
-  
+
+
   const [lines, setLines] = useState([])
   const [linesWithData, setLinesWithData] = useState([]) // Líneas con órdenes y recetas
   const [selectedLine, setSelectedLine] = useState(null)
@@ -279,8 +290,6 @@ function MaterialsConsumablesPage() {
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [loadingConsumptions, setLoadingConsumptions] = useState(false)
   const [loadingRecipe, setLoadingRecipe] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newConsumption, setNewConsumption] = useState({
@@ -361,10 +370,10 @@ function MaterialsConsumablesPage() {
       debug.log('✅ Líneas cargadas:', linesData.length, 'líneas')
       debug.log('📊 Datos de líneas:', linesData)
       setLines(linesData)
-      setError(null)
+      clearError()
     } catch (err) {
       debug.error('❌ Error loading lines:', err)
-      setError('Error de conexión')
+      showError('Error de conexión')
     } finally {
       setLoading(false)
     }
@@ -473,14 +482,13 @@ function MaterialsConsumablesPage() {
       const ordersData = Array.isArray(data) ? data : []
       debug.log('Orders loaded:', ordersData.length, ordersData)
       setOrders(ordersData)
-      setError(null)
+      clearError()
       if (fromSAP) {
-        setSuccess('Órdenes actualizadas desde SAP exitosamente')
-        setTimeout(() => setSuccess(null), 3000)
+        showSuccess('Órdenes actualizadas desde SAP exitosamente')
       }
     } catch (err) {
       debug.error('Error loading orders:', err)
-      setError('Error al cargar las órdenes de producción')
+      showError('Error al cargar las órdenes de producción')
     } finally {
       setLoadingOrders(false)
       setUpdatingSAP(false)
@@ -607,15 +615,14 @@ function MaterialsConsumablesPage() {
       })
       
       debug.error('✅ Asignación eliminada:', data)
-      setSuccess(`✅ Componente ${componentSapCode} desasignado de ${hopperName}`)
-      setTimeout(() => setSuccess(null), 3000)
+      showSuccess(`✅ Componente ${componentSapCode} desasignado de ${hopperName}`)
       
       // Recargar consumos
       await loadDoserConsumptions()
       await loadLinesWithData()
     } catch (err) {
       debug.error('❌ Error eliminando asignación:', err)
-      setError('Error al eliminar la asignación del componente')
+      showError('Error al eliminar la asignación del componente')
     }
   }, [selectedLine, loadDoserConsumptions, loadLinesWithData])
 
@@ -625,7 +632,7 @@ function MaterialsConsumablesPage() {
     
     try {
       setAssigningComponent(true)
-      setError(null)
+      clearError()
       debug.error('🔄 Asignando componente:', componentSapCode, 'a doser:', selectedDoser.name, 'hopper:', currentHopper.name)
       
       const response = await api.get('/sap/orderConsump/add', {
@@ -643,8 +650,7 @@ function MaterialsConsumablesPage() {
       })
       
       debug.error('✅ Componente asignado exitosamente:', data)
-      setSuccess(`✅ Componente ${componentSapCode} asignado a ${selectedDoser.name} / ${currentHopper.name}`)
-      setTimeout(() => setSuccess(null), 5000)
+      showSuccess(`✅ Componente ${componentSapCode} asignado a ${selectedDoser.name} / ${currentHopper.name}`)
       
       // NO cerrar modal - mantener abierto para múltiples asignaciones
       // El usuario debe cerrar manualmente cuando termine
@@ -660,12 +666,12 @@ function MaterialsConsumablesPage() {
       if (err.response?.status === 500) {
         const errorMsg = err.response?.data?.Message || err.response?.data?.message || ''
         if (errorMsg.includes('duplicate') || errorMsg.includes('unique constraint')) {
-          setError(`⚠️ Este hopper (${currentHopper.name}) ya tiene un componente asignado. Primero debes eliminar la asignación actual.`)
+          showError(`⚠️ Este hopper (${currentHopper.name}) ya tiene un componente asignado. Primero debes eliminar la asignación actual.`)
         } else {
-          setError('❌ Error del servidor al asignar el componente. Revisa los logs del backend.')
+          showError('❌ Error del servidor al asignar el componente. Revisa los logs del backend.')
         }
       } else {
-        setError('❌ Error al asignar el componente al dosificador')
+        showError('❌ Error al asignar el componente al dosificador')
       }
     } finally {
       setAssigningComponent(false)
@@ -677,7 +683,7 @@ function MaterialsConsumablesPage() {
     
     try {
       setUpdatingOrder(orderNumber)
-      setError(null)
+      clearError()
       
       const sapCode = selectedLine.sap_code || selectedLine.code || selectedLine.line || ''
       const headers = {
@@ -697,11 +703,10 @@ function MaterialsConsumablesPage() {
       
       // Recargar órdenes después de actualizar
       await loadOrders(false)
-      setSuccess(`Orden ${action === 'Start' ? 'iniciada' : 'finalizada'} exitosamente`)
-      setTimeout(() => setSuccess(null), 3000)
+      showSuccess(`Orden ${action === 'Start' ? 'iniciada' : 'finalizada'} exitosamente`)
     } catch (err) {
       debug.error(`Error ${action} order:`, err)
-      setError(`Error al ${action === 'Start' ? 'iniciar' : 'finalizar'} la orden`)
+      showError(`Error al ${action === 'Start' ? 'iniciar' : 'finalizar'} la orden`)
     } finally {
       setUpdatingOrder(null)
     }
@@ -720,10 +725,10 @@ function MaterialsConsumablesPage() {
     
     try {
       setUpdatingOrder(orderNumber)
-      setError(null)
+      clearError()
       
       if (!dateEdit.start || !dateEdit.end) {
-        setError('Por favor, completa ambas fechas')
+        showError('Por favor, completa ambas fechas')
         return
       }
       
@@ -748,11 +753,10 @@ function MaterialsConsumablesPage() {
       await loadOrders(false)
       setEditingDates(null)
       setDateEdit({ start: '', end: '' })
-      setSuccess('✅ Fechas actualizadas exitosamente')
-      setTimeout(() => setSuccess(null), 3000)
+      showSuccess('✅ Fechas actualizadas exitosamente')
     } catch (err) {
       debug.error('Error updating dates:', err)
-      setError('Error al actualizar las fechas')
+      showError('Error al actualizar las fechas')
     } finally {
       setUpdatingOrder(null)
     }
@@ -784,13 +788,12 @@ function MaterialsConsumablesPage() {
       
       setRecipe(data || null)
       if (fromSAP && data) {
-        setSuccess('Receta cargada exitosamente desde SAP')
-        setTimeout(() => setSuccess(null), 3000)
+        showSuccess('Receta cargada exitosamente desde SAP')
       }
     } catch (err) {
       debug.error('Error loading recipe:', err)
       const errorMessage = err.response?.data?.message || 'Error al cargar la receta'
-      setError(errorMessage)
+      showError(errorMessage)
       setRecipe(null)
     } finally {
       setLoadingRecipe(false)
@@ -802,7 +805,7 @@ function MaterialsConsumablesPage() {
     
     try {
       setLoadingConsumptions(true)
-      setError(null)
+      clearError()
       
       const headers = {
         'Content-Type': 'application/json',
@@ -829,9 +832,9 @@ function MaterialsConsumablesPage() {
     } catch (err) {
       debug.error('Error loading consumptions:', err)
       if (err.response?.status === 403) {
-        setError('No tienes permisos para acceder a los consumos')
+        showError('No tienes permisos para acceder a los consumos')
       } else {
-        setError('Error al cargar los consumos de materiales')
+        showError('Error al cargar los consumos de materiales')
       }
     } finally {
       setLoadingConsumptions(false)
@@ -843,8 +846,8 @@ function MaterialsConsumablesPage() {
     
     try {
       setLoadingConsumptions(true)
-      setError(null)
-      setSuccess(null)
+      clearError()
+      clearSuccess()
       
       const headers = {
         'Content-Type': 'application/json',
@@ -864,16 +867,15 @@ function MaterialsConsumablesPage() {
       )
       
       setConsumptions(filteredConsumptions)
-      setSuccess('Consumos calculados exitosamente desde InfluxDB')
+      showSuccess('Consumos calculados exitosamente desde InfluxDB')
       setLastUpdate(new Date())
       
       // Ocultar mensaje de éxito después de 5 segundos
-      setTimeout(() => setSuccess(null), 5000)
     } catch (err) {
       debug.error('Error calculating consumptions:', err)
       // Mostrar el mensaje de error del backend si está disponible
       const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Error al calcular los consumos desde InfluxDB'
-      setError(errorMessage)
+      showError(errorMessage)
     } finally {
       setLoadingConsumptions(false)
     }
@@ -884,7 +886,7 @@ function MaterialsConsumablesPage() {
     if (!window.confirm('¿Estás seguro de eliminar este consumo?')) return
     
     try {
-      setError(null)
+      clearError()
       
       const headers = {
         'Content-Type': 'application/json',
@@ -904,11 +906,10 @@ function MaterialsConsumablesPage() {
       
       // Recargar consumos después de eliminar
       await loadConsumptions()
-      setSuccess('Consumo eliminado exitosamente')
-      setTimeout(() => setSuccess(null), 3000)
+      showSuccess('Consumo eliminado exitosamente')
     } catch (err) {
       debug.error('Error deleting consumption:', err)
-      setError('Error al eliminar el consumo')
+      showError('Error al eliminar el consumo')
     }
   }
 
@@ -917,13 +918,13 @@ function MaterialsConsumablesPage() {
     
     // Validar campos requeridos
     if (!newConsumption.DosingUnit.trim() || !newConsumption.DosingHopper.trim() || !newConsumption.ComponentSapCode.trim()) {
-      setError('Por favor, completa todos los campos requeridos')
+      showError('Por favor, completa todos los campos requeridos')
       return
     }
     
     try {
       setAddingConsumption(true)
-      setError(null)
+      clearError()
       
       const headers = {
         'Content-Type': 'application/json',
@@ -953,12 +954,11 @@ function MaterialsConsumablesPage() {
       await loadConsumptions()
       // Recargar receta también por si acaso
       await loadRecipe()
-      setSuccess('Consumo agregado exitosamente')
-      setTimeout(() => setSuccess(null), 3000)
+      showSuccess('Consumo agregado exitosamente')
     } catch (err) {
       debug.error('Error adding consumption:', err)
       const errorMessage = err.response?.data?.message || 'Error al agregar el consumo'
-      setError(errorMessage)
+      showError(errorMessage)
     } finally {
       setAddingConsumption(false)
     }
@@ -1011,21 +1011,13 @@ function MaterialsConsumablesPage() {
           </nav>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 bg-red-900/20 border border-red-500 rounded-lg p-4 flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400" />
-            <span className="text-red-400">{error}</span>
-          </div>
-        )}
-
-        {/* Success Message */}
-        {success && (
-          <div className="mb-6 bg-green-900/20 border border-green-500 rounded-lg p-4 flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-green-400" />
-            <span className="text-green-400">{success}</span>
-          </div>
-        )}
+        {/* Notificaciones refactorizadas con accesibilidad */}
+        <Notifications
+          error={error}
+          success={success}
+          onClearError={clearError}
+          onClearSuccess={clearSuccess}
+        />
 
         {/* Line Selection - Vista Cards */}
         {!selectedLine && (
@@ -1056,13 +1048,12 @@ function MaterialsConsumablesPage() {
                           return null
                         })
                       })).then(() => {
-                        setSuccess('Todas las líneas sincronizadas con SAP exitosamente')
-                        setTimeout(() => setSuccess(null), 5000)
+                        showSuccess('Todas las líneas sincronizadas con SAP exitosamente')
                         // Recargar datos de las líneas
                         loadLinesWithData()
                       }).catch(err => {
                         debug.error('Error en sincronización masiva:', err)
-                        setError('Error al sincronizar algunas líneas con SAP')
+                        showError('Error al sincronizar algunas líneas con SAP')
                       }).finally(() => {
                         setUpdatingSAP(false)
                       })
@@ -1637,8 +1628,7 @@ function MaterialsConsumablesPage() {
                         onClick={() => {
                           // Seleccionar automáticamente la orden activa para ir a la vista de consumos
                           setSelectedOrder(selectedLine.activeOrder)
-                          setSuccess('✅ Configuración guardada. Cargando vista de consumos...')
-                          setTimeout(() => setSuccess(null), 2000)
+                          showSuccess('✅ Configuración guardada. Cargando vista de consumos...')
                         }}
                         className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 rounded-lg transition-all shadow-lg"
                       >
@@ -2321,7 +2311,7 @@ function MaterialsConsumablesPage() {
                         DosingHopper: '',
                         ComponentSapCode: ''
                       })
-                      setError(null)
+                      clearError()
                     }}
                     className="p-1 hover:bg-gray-700 rounded-lg transition-colors"
                   >
@@ -2401,7 +2391,7 @@ function MaterialsConsumablesPage() {
                           DosingHopper: '',
                           ComponentSapCode: ''
                         })
-                        setError(null)
+                        clearError()
                       }}
                       className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white"
                     >
