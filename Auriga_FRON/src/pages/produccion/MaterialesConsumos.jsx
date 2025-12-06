@@ -11,8 +11,10 @@ import { useNotifications } from './MaterialesConsumos/hooks'
 import { Notifications } from './MaterialesConsumos/components/shared/Notifications'
 import { LoadingState, EmptyState } from './MaterialesConsumos/components/shared/LoadingState'
 import { PageHeader } from './MaterialesConsumos/components/shared/PageHeader'
+import { AddConsumptionModal } from './MaterialesConsumos/components/shared/AddConsumptionModal'
 import LineCard from './MaterialesConsumos/components/LineSelector/LineCard'
 import DoserCard from './MaterialesConsumos/components/DoserManager/DoserCard'
+import { AssignComponentModal } from './MaterialesConsumos/components/DoserManager/AssignComponentModal'
 
 // Helper para debugging solo en desarrollo
 const isDev = import.meta.env.DEV
