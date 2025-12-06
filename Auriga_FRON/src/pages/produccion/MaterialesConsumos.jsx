@@ -965,51 +965,18 @@ function MaterialsConsumablesPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Cargando líneas de producción...</p>
-        </div>
-      </div>
-    )
+    return <LoadingState message="Cargando líneas de producción..." fullScreen />
   }
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <BoxSelect className="w-8 h-8 text-blue-400" />
-              <div>
-                <h1 className="text-3xl font-bold text-white">Materiales y Consumibles</h1>
-                <p className="text-gray-400 mt-1">
-                  {isGlobalView ? 'Todas las fábricas' : `Fábrica: ${selectedFactory}`}
-                </p>
-              </div>
-            </div>
-            {lastUpdate && (
-              <div className="text-sm text-gray-400">
-                Última actualización: {lastUpdate.toLocaleTimeString('es-ES')}
-              </div>
-            )}
-          </div>
-
-          {/* Breadcrumbs */}
-          <nav className="flex items-center gap-2 text-sm text-gray-400 mb-4">
-            <button
-              onClick={() => navigate(`/dashboard`)}
-              className="hover:text-white transition-colors flex items-center gap-1"
-            >
-              <Home className="w-4 h-4" />
-              Dashboard
-            </button>
-            <ChevronRight className="w-4 h-4" />
-            <span className="text-white">Materiales y Consumibles</span>
-          </nav>
-        </div>
+        {/* Header refactorizado */}
+        <PageHeader
+          currentFactory={selectedFactory}
+          isGlobalView={isGlobalView}
+          lastUpdate={lastUpdate}
+        />
 
         {/* Notificaciones refactorizadas con accesibilidad */}
         <Notifications
@@ -1083,15 +1050,13 @@ function MaterialsConsumablesPage() {
                 </div>
               </div>
               {loadingLineData ? (
-                <div className="p-12 text-center">
-                  <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
-                  <p className="text-gray-400 text-lg">Cargando información completa de las líneas...</p>
-                </div>
+                <LoadingState message="Cargando información completa de las líneas..." />
               ) : linesWithData.length === 0 ? (
-                <div className="p-12 text-center">
-                  <Factory className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-400 text-lg">No hay líneas disponibles</p>
-                </div>
+                <EmptyState
+                  icon={Factory}
+                  title="No hay líneas disponibles"
+                  description={`No se encontraron líneas de producción${selectedFactory ? ` para la fábrica ${selectedFactory}` : ''}`}
+                />
               ) : (
                 <div className="space-y-4">
                   {linesWithData.map((line) => {
