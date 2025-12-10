@@ -33,13 +33,46 @@ export const api = {
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Intentar obtener el mensaje de error del body
+        let errorMessage = `HTTP error! status: ${response.status}`
+        let errorData = null
+        try {
+          const text = await response.text()
+          if (text) {
+            try {
+              errorData = JSON.parse(text)
+              if (errorData.message) {
+                errorMessage = errorData.message
+              } else if (errorData.error) {
+                errorMessage = errorData.error
+              }
+            } catch (e) {
+              // Si no es JSON, usar el texto como mensaje
+              errorMessage = text || errorMessage
+            }
+          }
+        } catch (e) {
+          // Si no se puede leer el body, usar el mensaje por defecto
+        }
+        const error = new Error(errorMessage)
+        error.status = response.status
+        error.response = { 
+          status: response.status,
+          data: errorData
+        }
+        throw error
       }
 
       const data = await response.json();
       return data;
     } catch (error) {
+      // Para endpoints que pueden fallar silenciosamente (como /sap/orderConsump/add),
+      // solo loguear como warning en lugar de error
+      if (endpoint.includes('/sap/orderConsump/add')) {
+        console.warn(`⚠️ El backend no pudo procesar ${endpoint} (esto es esperado por ahora):`, error.message);
+      } else {
       console.error(`Error en GET ${endpoint}:`, error);
+      }
       throw error;
     }
   },

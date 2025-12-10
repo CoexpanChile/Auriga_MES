@@ -31,7 +31,7 @@ func MainMiddlewares(e *echo.Echo, s *config.Settings, logger *zap.Logger) {
 	frontendURL := "http://18.213.58.26:5826"
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:     []string{frontendURL, grafanaConnection1, grafanaConnection2},
-		AllowHeaders:     []string{"*"},
+		AllowHeaders:     []string{"*", "Content-Type", "Factory", "ProdLine", "ProdLine_ID", "prodline_id", "SapCode", "SapOrderCode", "SapRequest", "saprequest", "System", "StartDate", "startdate", "EndDate", "enddate", "SapComponentCode", "sapcomponentcode", "Machine", "machine", "Part", "part"},
 		AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
 		AllowCredentials: true,  // ✅ IMPORTANTE: Permitir cookies
 		MaxAge:           86400, // ✅ Cache preflight requests

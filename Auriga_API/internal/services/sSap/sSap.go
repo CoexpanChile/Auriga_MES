@@ -20,7 +20,7 @@ type Service interface {
 	DosingConsumptionAdd(factory string, prodline string, dosingSystem string, dosingUnit string, dosingComponent string, sapOrderCode string, sapComponentCode string) ([]msDosingComponent, error)
 	DosingConsumptionDel(factory string, prodline string, dosingSystem string, dosingUnit string, dosingComponent string, sapOrderCode string, sapComponentCode string) ([]msDosingComponent, error)
 	DosingConsumptionUpdate(factory string, prodline string, dosingSystem string, dosingUnit string, dosingComponent string, sapOrderCode string, sapComponentCode string) ([]msDosingComponent, error)
-	DosingConsumptionCalculate(factory string, prodline string, sapOrderCode string) ([]msDosingComponent, error)
+	DosingConsumptionCalculate(factory string, prodline string, sapOrderCode string, startDate *time.Time, endDate *time.Time) ([]msDosingComponent, error)
 }
 
 type service struct {

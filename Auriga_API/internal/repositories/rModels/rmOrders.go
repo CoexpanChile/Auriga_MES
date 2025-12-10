@@ -23,12 +23,12 @@ type MrProductionOrder struct {
 }
 
 type MrConsumption struct {
-	MrRecipeSapCode    string  `gorm:"type:varchar(100);not null;uniqueIndex:idx_unique_consumption"`
+	MrRecipeSapCode    string  `gorm:"type:varchar(100);not null;uniqueIndex:idx_unique_consumption,where:deleted_at IS NULL"`
 	MrComponentSapCode string  `gorm:"type:varchar(100);not null"`
-	Factory            string  `gorm:"type:varchar(32);not null;check:char_length(factory) > 0;uniqueIndex:idx_unique_consumption"`
-	ProdLine           string  `gorm:"type:varchar(32);not null;check:char_length(prod_line) > 0;uniqueIndex:idx_unique_consumption"`
-	DosingUnit         string  `gorm:"type:varchar(32);not null;check:char_length(dosing_unit) > 0;uniqueIndex:idx_unique_consumption"`
-	Hopper             string  `gorm:"type:varchar(32);not null;check:char_length(hopper) > 0;uniqueIndex:idx_unique_consumption"`
+	Factory            string  `gorm:"type:varchar(32);not null;check:char_length(factory) > 0;uniqueIndex:idx_unique_consumption,where:deleted_at IS NULL"`
+	ProdLine           string  `gorm:"type:varchar(32);not null;check:char_length(prod_line) > 0;uniqueIndex:idx_unique_consumption,where:deleted_at IS NULL"`
+	DosingUnit         string  `gorm:"type:varchar(32);not null;check:char_length(dosing_unit) > 0;uniqueIndex:idx_unique_consumption,where:deleted_at IS NULL"`
+	Hopper             string  `gorm:"type:varchar(32);not null;check:char_length(hopper) > 0;uniqueIndex:idx_unique_consumption,where:deleted_at IS NULL"`
 	CommittedQuantity  float32 `gorm:"type:float"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

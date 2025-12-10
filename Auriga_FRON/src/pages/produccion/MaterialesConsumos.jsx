@@ -1,6 +1,6 @@
-import { useState, useEffect, memo, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, memo, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BoxSelect, Factory, Package, RefreshCw, Loader2, ChevronRight, Home, Plus, Trash2, Edit2, Calculator, AlertCircle, CheckCircle2, X, Play, Square, PlayCircle, StopCircle } from 'lucide-react'
+import { Factory, Package, RefreshCw, Loader2, ChevronRight, Home, Trash2, Calculator, AlertCircle, CheckCircle2, X, Edit, Settings, Plus, PlayCircle, Square } from 'lucide-react'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { api } from '../../lib/api'
@@ -11,10 +11,11 @@ import { useNotifications } from './MaterialesConsumos/hooks'
 import { Notifications } from './MaterialesConsumos/components/shared/Notifications'
 import { LoadingState, EmptyState } from './MaterialesConsumos/components/shared/LoadingState'
 import { PageHeader } from './MaterialesConsumos/components/shared/PageHeader'
-import { AddConsumptionModal } from './MaterialesConsumos/components/shared/AddConsumptionModal'
+import { EditConsumptionModal } from './MaterialesConsumos/components/shared/EditConsumptionModal'
+import { DosifierManagerModal } from './MaterialesConsumos/components/shared/DosifierManagerModal'
+import { HopperManagerModal } from './MaterialesConsumos/components/shared/HopperManagerModal'
+import { ComponentManagerModal } from './MaterialesConsumos/components/shared/ComponentManagerModal'
 import LineCard from './MaterialesConsumos/components/LineSelector/LineCard'
-import DoserCard from './MaterialesConsumos/components/DoserManager/DoserCard'
-import { AssignComponentModal } from './MaterialesConsumos/components/DoserManager/AssignComponentModal'
 
 // Helper para debugging solo en desarrollo
 const isDev = import.meta.env.DEV
@@ -27,69 +28,7 @@ const debug = {
 // ============================================================================
 // COMPONENTES MEMOIZADOS PARA OPTIMIZACIÓN
 // ============================================================================
-// LineCard y DoserCard ahora se importan desde archivos separados (optimizados)
-
-// Componente para botón de componente de receta (optimizado con memo)
-const RecipeComponentButton = memo(({ 
-  component, 
-  isAssigned, 
-  isAssigning,
-  onClick 
-}) => {
-  return (
-    <button
-      onClick={onClick}
-      disabled={isAssigning || isAssigned}
-      className={`w-full text-left p-4 rounded-lg border transition-all ${
-        isAssigned 
-          ? 'bg-green-900/30 border-green-700 cursor-not-allowed' 
-          : 'bg-gray-800 hover:bg-gray-700 border-gray-700 hover:border-green-500'
-      } ${isAssigning ? 'cursor-not-allowed opacity-50' : ''}`}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex-1 min-w-0 mr-4">
-          <div className="flex items-center gap-2 mb-1">
-            <p className={`text-sm font-mono font-semibold ${isAssigned ? 'text-green-400' : 'text-blue-400'}`}>
-              {component.SapCode.trim()}
-            </p>
-            <Badge variant="secondary" className="text-xs">
-              {component.MeasurementUnitRQ?.trim() || 'N/A'}
-            </Badge>
-            {isAssigned && (
-              <Badge variant="success" className="text-xs">
-                ✓ Asignado
-              </Badge>
-            )}
-          </div>
-          <p className="text-sm text-gray-300 line-clamp-2">{component.Description}</p>
-          <div className="flex items-center gap-4 mt-2 text-xs">
-            <span className="text-gray-400">
-              Requerido: <span className="text-white font-medium">{component.RequiredQuantity?.trim() || '0'}</span>
-            </span>
-            <span className="text-gray-400">
-              Consumido: <span className="text-green-400 font-medium">{component.WithDrawnQuantity?.trim() || '0'}</span>
-            </span>
-          </div>
-        </div>
-        {isAssigning ? (
-          <Loader2 className="w-5 h-5 text-green-500 animate-spin flex-shrink-0" />
-        ) : isAssigned ? (
-          <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
-        ) : (
-          <Plus className="w-5 h-5 text-green-500 flex-shrink-0" />
-        )}
-      </div>
-    </button>
-  )
-}, (prevProps, nextProps) => {
-  return (
-    prevProps.component.SapCode === nextProps.component.SapCode &&
-    prevProps.isAssigned === nextProps.isAssigned &&
-    prevProps.isAssigning === nextProps.isAssigning
-  )
-})
-
-RecipeComponentButton.displayName = 'RecipeComponentButton'
+// LineCard ahora se importa desde archivos separados (optimizado)
 
 function MaterialsConsumablesPage() {
   const { t } = useLanguage()
@@ -98,12 +37,90 @@ function MaterialsConsumablesPage() {
   // Hook de notificaciones refactorizado
   const { error, success, showError, showSuccess, clearError, clearSuccess } = useNotifications()
 
-  const selectedFactory = useMemo(() => {
+  // Estado para la fábrica seleccionada (reactivo a cambios)
+  const [selectedFactory, setSelectedFactory] = useState(() => {
     const saved = localStorage.getItem('selectedFactory')
     return saved && saved !== 'CX' ? saved : null
-  }, [])
+  })
 
   const isGlobalView = !selectedFactory
+
+  // Silenciar errores de extensiones del navegador (no afectan la funcionalidad)
+  useEffect(() => {
+    const handleUnhandledRejection = (event) => {
+      // Filtrar errores comunes de extensiones del navegador
+      if (event.reason && typeof event.reason === 'object' && event.reason.message) {
+        const message = event.reason.message
+        if (
+          message.includes('message channel closed') ||
+          message.includes('Extension context invalidated') ||
+          message.includes('Receiving end does not exist')
+        ) {
+          // Silenciar estos errores específicos de extensiones
+          event.preventDefault()
+          return
+        }
+      }
+    }
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+    
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+    }
+  }, [])
+
+  // Escuchar cambios en localStorage y eventos personalizados
+  useEffect(() => {
+    const checkAndUpdateFactory = () => {
+      const saved = localStorage.getItem('selectedFactory')
+      const newFactory = saved && saved !== 'CX' ? saved : null
+      
+      // Usar una función de actualización para evitar dependencias
+      setSelectedFactory(prevFactory => {
+        if (newFactory !== prevFactory) {
+          debug.log('🏭 Cambio de fábrica detectado:', { old: prevFactory, new: newFactory })
+          // Limpiar selecciones cuando cambia la fábrica (usar setTimeout para evitar problemas de estado)
+          setTimeout(() => {
+            setSelectedLine(null)
+            setSelectedOrder(null)
+            setOrders([])
+            setRecipe(null)
+            setConsumptions([])
+          }, 0)
+          return newFactory
+        }
+        return prevFactory
+      })
+    }
+
+    // Verificar inmediatamente
+    checkAndUpdateFactory()
+
+    // Escuchar eventos de storage (cuando cambia en otra pestaña/ventana)
+    const handleStorageChange = (e) => {
+      if (e.key === 'selectedFactory') {
+        checkAndUpdateFactory()
+      }
+    }
+
+    // Escuchar eventos personalizados (cuando cambia en la misma pestaña)
+    const handleFactoryChange = (event) => {
+      checkAndUpdateFactory()
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('factoryChanged', handleFactoryChange)
+
+    // Polling cada 1 segundo para detectar cambios (fallback)
+    const interval = setInterval(checkAndUpdateFactory, 1000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('factoryChanged', handleFactoryChange)
+      clearInterval(interval)
+    }
+  }, []) // Sin dependencias para evitar loops
 
 
   const [lines, setLines] = useState([])
@@ -118,28 +135,42 @@ function MaterialsConsumablesPage() {
   const [loadingConsumptions, setLoadingConsumptions] = useState(false)
   const [loadingRecipe, setLoadingRecipe] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [newConsumption, setNewConsumption] = useState({
-    DosingUnit: '',
-    DosingHopper: '',
-    ComponentSapCode: ''
-  })
   const [addingConsumption, setAddingConsumption] = useState(false)
-  const [editingDates, setEditingDates] = useState(null)
-  const [dateEdit, setDateEdit] = useState({ start: '', end: '' })
   const [updatingSAP, setUpdatingSAP] = useState(false)
-  const [updatingOrder, setUpdatingOrder] = useState(null)
   const [loadingLineData, setLoadingLineData] = useState(false)
-  const [dosers, setDosers] = useState([])
-  const [loadingDosers, setLoadingDosers] = useState(false)
-  const [expandedDoser, setExpandedDoser] = useState(null)
-  const [showAssignModal, setShowAssignModal] = useState(false)
-  const [selectedDoser, setSelectedDoser] = useState(null)
-  const [selectedHopper, setSelectedHopper] = useState(null)
-  const [tempHopper, setTempHopper] = useState(null) // Hopper temporal seleccionado en el modal
-  const [assigningComponent, setAssigningComponent] = useState(false)
-  const [doserConsumptions, setDoserConsumptions] = useState([]) // Consumos actuales de todos los hoppers
-  const [loadingConsumptionsForDosers, setLoadingConsumptionsForDosers] = useState(false)
+  
+  // Estados para declaración de consumo
+  const [dosifiersFromAPI, setDosifiersFromAPI] = useState([])
+  const [hoppersFromAPI, setHoppersFromAPI] = useState([])
+  const [loadingDosifiersAPI, setLoadingDosifiersAPI] = useState(false)
+  const [declarationForm, setDeclarationForm] = useState({
+    componentSapCode: '',
+    dosifierId: '',
+    hopperId: '',
+    quantity: ''
+  })
+  // Almacenar cantidades declaradas localmente (solo informativo, no se envía al backend)
+  const [declaredQuantities, setDeclaredQuantities] = useState({}) // { componentSapCode: totalQuantity } - Limpiado: no se usa para mostrar, siempre muestra 0
+  
+  // Estados para Inicio y Fin de OF
+  const [ofStartDateTime, setOfStartDateTime] = useState(null) // Formato: Date object
+  const [ofEndDateTime, setOfEndDateTime] = useState(null) // Formato: Date object
+  const [showStartModal, setShowStartModal] = useState(false)
+  const [showEndModal, setShowEndModal] = useState(false)
+  const [tempStartDateTime, setTempStartDateTime] = useState('')
+  const [tempEndDateTime, setTempEndDateTime] = useState('')
+  const [loadingQuantityFromInflux, setLoadingQuantityFromInflux] = useState(false)
+  
+  // Estados para modales de gestión CRUD
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingConsumption, setEditingConsumption] = useState(null)
+  const [showDosifierModal, setShowDosifierModal] = useState(false)
+  const [showHopperModal, setShowHopperModal] = useState(false)
+  const [showComponentModal, setShowComponentModal] = useState(false)
+  const [dosifiers, setDosifiers] = useState([])
+  const [hoppers, setHoppers] = useState([])
+  const [components, setComponents] = useState([])
+  const [managingCRUD, setManagingCRUD] = useState(false)
 
   useEffect(() => {
     loadLines()
@@ -154,10 +185,6 @@ function MaterialsConsumablesPage() {
   useEffect(() => {
     if (selectedLine) {
       loadOrders()
-      loadDosers()
-      if (selectedLine.activeOrder) {
-        loadDoserConsumptions()
-      }
     }
   }, [selectedLine])
 
@@ -168,6 +195,23 @@ function MaterialsConsumablesPage() {
     }
   }, [selectedOrder, selectedLine])
 
+
+  // Helper para normalizar la fábrica de una línea
+  // Prioriza factory directamente, luego hierarchical_level[0] que contiene la fábrica (ej: 'CXC')
+  // NO usa location directamente porque puede ser 'CXC_L01' (ubicación completa)
+  const getFactoryFromLine = (line) => {
+    // Priorizar factory si está disponible (ya fue asignada desde ParentID)
+    if (line?.factory) {
+      return line.factory
+    }
+    // Fallback a hierarchical_level[0]
+    if (line?.hierarchical_level?.[0]) {
+      return line.hierarchical_level[0]
+    }
+    // Si no hay nada, retornar string vacío
+    return ''
+  }
+
   const loadLines = async () => {
     try {
       setLoading(true)
@@ -177,26 +221,255 @@ function MaterialsConsumablesPage() {
       // Usar /asset/list y filtrar en el cliente (evita CORS y 404)
       const assets = await api.get('/asset/list')
       
-      // Filtrar solo líneas de producción
-      let linesData = (assets || []).filter(asset => 
-        asset.hierarchical_level && 
-        asset.hierarchical_level.length >= 2 &&
-        asset.hierarchical_level[1]?.startsWith('L')
-      )
-      
-      // Filtrar por fábrica si se especifica
-      if (selectedFactory) {
-        linesData = linesData.filter(line => 
-          line.location?.includes(selectedFactory) || 
-          line.hierarchical_level?.[0] === selectedFactory ||
-          line.factory === selectedFactory
-        )
+      debug.log('📦 Assets recibidos de la API:', assets?.length || 0)
+      if (assets && assets.length > 0 && isDev) {
+        // Mostrar algunos ejemplos de assets completos para debugging
+        debug.log('📋 Ejemplos de assets completos (primeros 3):', assets.slice(0, 3))
+        
+        // Mostrar todas las propiedades únicas de los primeros assets
+        const allKeys = new Set()
+        assets.slice(0, 10).forEach(a => {
+          Object.keys(a).forEach(key => allKeys.add(key))
+        })
+        debug.log('🔑 Propiedades encontradas en assets:', Array.from(allKeys).sort())
       }
       
-      debug.log('📦 Líneas filtradas:', linesData.length)
+      // Encontrar el ID de la fábrica seleccionada si existe
+      let selectedFactoryId = null
+      if (selectedFactory) {
+        const factoryAsset = (assets || []).find(a => 
+          (a.Code === selectedFactory || a.code === selectedFactory) && 
+          (a.ParentID === null || a.parentID === null)
+        )
+        if (factoryAsset) {
+          selectedFactoryId = factoryAsset.ID || factoryAsset.id
+          debug.log('🏭 Fábrica seleccionada encontrada:', {
+            code: factoryAsset.Code || factoryAsset.code,
+            id: selectedFactoryId
+          })
+        } else {
+          debug.warn('⚠️ No se encontró la fábrica seleccionada:', selectedFactory)
+        }
+      }
+      
+      // Filtrar solo líneas de producción
+      // Estructura: Code empieza con 'Line_' o 'L', y tiene ParentID que apunta a una fábrica
+      // O tiene hierarchical_level con 2 elementos (fábrica + línea)
+      let linesData = (assets || []).filter(asset => {
+        const code = asset.Code || asset.code || ''
+        const parentId = asset.ParentID || asset.parentID
+        const hierarchicalLevel = asset.hierarchical_level || asset.HierarchicalLevel
+        
+        // Verificar si es una línea por código
+        const isLineByCode = code && (
+          code.startsWith('Line_') || 
+          code.startsWith('L') ||
+          code.toLowerCase().includes('line') ||
+          code.match(/^Line_\d+/i) || // Line_01, Line_02, etc.
+          code.match(/^L\d+/i) // L01, L02, etc.
+        )
+        
+        // Verificar si es una línea por hierarchical_level (nivel 2 = fábrica + línea)
+        const isLineByLevel = hierarchicalLevel && Array.isArray(hierarchicalLevel) && hierarchicalLevel.length === 2
+        
+        // Debe tener un ParentID (no es null, es decir, pertenece a una fábrica)
+        const hasParent = parentId !== null && parentId !== undefined
+        
+        const isLine = isLineByCode || isLineByLevel
+        
+        return isLine && hasParent
+      })
+      
+      debug.log('🔍 Líneas encontradas después del filtro inicial:', linesData.length)
+      
+      // Filtrar por fábrica si se especifica
+      if (selectedFactoryId !== null) {
+        debug.log('🔍 Filtrando líneas por fábrica ID:', selectedFactoryId)
+        const beforeFilter = linesData.length
+        linesData = linesData.filter(line => {
+          const lineParentId = line.ParentID || line.parentID
+          const matchesFactory = lineParentId === selectedFactoryId
+          
+          if (!matchesFactory && isDev) {
+            debug.log('❌ Línea no coincide con fábrica:', {
+              lineCode: line.Code || line.code,
+              lineParentId: lineParentId,
+              selectedFactoryId: selectedFactoryId
+            })
+          }
+          
+          return matchesFactory
+        })
+        debug.log(`📊 Filtrado: ${beforeFilter} líneas antes, ${linesData.length} después del filtro por fábrica ${selectedFactory}`)
+      }
+      
+      debug.log('📦 Assets totales:', assets?.length || 0)
+      debug.log('📦 Líneas filtradas (nivel 1):', linesData.length)
+      
+      // Si no hay líneas con el filtro estricto, intentar un filtro más permisivo
+      if (linesData.length === 0 && assets && assets.length > 0) {
+        debug.warn('⚠️ No se encontraron líneas con el filtro estricto, intentando filtro más permisivo...')
+        
+        // Filtro más permisivo: cualquier asset con ParentID y hierarchical_level de 2 elementos
+        const fallbackLines = (assets || []).filter(asset => {
+          const parentId = asset.ParentID || asset.parentID
+          const hierarchicalLevel = asset.hierarchical_level || asset.HierarchicalLevel
+          
+          // Si tiene ParentID y no es la fábrica misma (que tiene ParentID null)
+          const hasParent = parentId !== null && parentId !== undefined
+          
+          // Si tiene hierarchical_level con 2 elementos, probablemente es una línea
+          const hasTwoLevels = hierarchicalLevel && Array.isArray(hierarchicalLevel) && hierarchicalLevel.length === 2
+          
+          return hasParent && hasTwoLevels
+        })
+        
+        if (fallbackLines.length > 0) {
+          debug.warn(`✅ Encontradas ${fallbackLines.length} líneas con filtro permisivo`)
+          linesData = fallbackLines
+        } else {
+          debug.warn('⚠️ No se encontraron líneas ni con el filtro permisivo')
+          // Mostrar algunos assets con ParentID para entender la estructura
+          const assetsWithParent = assets.filter(a => (a.ParentID || a.parentID) !== null && (a.ParentID || a.parentID) !== undefined)
+          if (assetsWithParent.length > 0) {
+            debug.warn('📋 Assets con ParentID (primeros 10):', assetsWithParent.slice(0, 10).map(a => ({
+              code: a.Code || a.code,
+              name: a.Name || a.name,
+              parentId: a.ParentID || a.parentID,
+              hierarchical_level: a.hierarchical_level || a.HierarchicalLevel,
+              allKeys: Object.keys(a).slice(0, 10)
+            })))
+          }
+        }
+      }
+      
       debug.log('✅ Líneas cargadas:', linesData.length, 'líneas')
-      debug.log('📊 Datos de líneas:', linesData)
-      setLines(linesData)
+      
+      if (linesData.length === 0 && assets && assets.length > 0) {
+        debug.warn('⚠️ No se encontraron líneas. Analizando estructura de assets:')
+        
+        // Analizar diferentes estructuras de hierarchical_level
+        const level1Assets = assets.filter(a => a.hierarchical_level && a.hierarchical_level.length === 1)
+        const level2Assets = assets.filter(a => a.hierarchical_level && a.hierarchical_level.length === 2)
+        const level3Assets = assets.filter(a => a.hierarchical_level && a.hierarchical_level.length === 3)
+        const otherAssets = assets.filter(a => !a.hierarchical_level || (a.hierarchical_level.length !== 1 && a.hierarchical_level.length !== 2 && a.hierarchical_level.length !== 3))
+        
+        debug.warn('📊 Análisis de assets:')
+        debug.warn(`  - Assets con 1 nivel: ${level1Assets.length}`)
+        debug.warn(`  - Assets con 2 niveles: ${level2Assets.length}`)
+        debug.warn(`  - Assets con 3 niveles: ${level3Assets.length}`)
+        debug.warn(`  - Otros assets: ${otherAssets.length}`)
+        
+        // Mostrar ejemplos de assets con 1 nivel
+        if (level1Assets.length > 0) {
+          debug.warn('📋 Ejemplos de assets con 1 nivel (primeros 10):', level1Assets.slice(0, 10).map(a => ({
+            code: a.code,
+            name: a.name,
+            hierarchical_level: a.hierarchical_level,
+            firstLevel: a.hierarchical_level?.[0],
+            location: a.location,
+            factory: a.factory
+          })))
+        }
+        
+        // Mostrar ejemplos completos de algunos "otros assets" para entender su estructura
+        if (otherAssets.length > 0) {
+          debug.warn('📋 Ejemplos de "otros assets" (primeros 5 completos):', otherAssets.slice(0, 5))
+        }
+        
+        // Buscar assets que contengan "CXC" en alguna propiedad
+        const cxcAssets = assets.filter(a => {
+          const code = String(a.code || '').toUpperCase()
+          const name = String(a.name || '').toUpperCase()
+          const location = String(a.location || '').toUpperCase()
+          const factory = String(a.factory || '').toUpperCase()
+          return code.includes('CXC') || name.includes('CXC') || location.includes('CXC') || factory.includes('CXC')
+        })
+        if (cxcAssets.length > 0) {
+          debug.warn(`📋 Assets relacionados con CXC (${cxcAssets.length}):`, cxcAssets.slice(0, 10).map(a => ({
+            code: a.code,
+            name: a.name,
+            hierarchical_level: a.hierarchical_level,
+            location: a.location,
+            factory: a.factory,
+            allProperties: Object.keys(a)
+          })))
+        }
+        
+        // Buscar assets que puedan ser líneas (contienen "line" o "L" en alguna propiedad)
+        const potentialLines = assets.filter(a => {
+          const code = String(a.code || '').toLowerCase()
+          const name = String(a.name || '').toLowerCase()
+          const location = String(a.location || '').toLowerCase()
+          return code.includes('line') || code.match(/^l\d+/) || name.includes('line') || location.includes('line')
+        })
+        if (potentialLines.length > 0) {
+          debug.warn(`📋 Assets que podrían ser líneas (${potentialLines.length}):`, potentialLines.slice(0, 10).map(a => ({
+            code: a.code,
+            name: a.name,
+            hierarchical_level: a.hierarchical_level,
+            location: a.location,
+            factory: a.factory
+          })))
+        }
+      } else if (linesData.length > 0) {
+        debug.log('📊 Datos de líneas:', linesData.map(l => ({
+          code: l.Code || l.code,
+          id: l.ID || l.id,
+          parentId: l.ParentID || l.parentID,
+          factory: selectedFactory
+        })))
+      }
+      
+      // Mapear las líneas a un formato consistente
+      // Buscar la fábrica usando el ParentID de cada línea
+      const mappedLines = linesData.map(line => {
+        const parentId = line.ParentID || line.parentID
+        const lineCode = line.Code || line.code || ''
+        
+        // Buscar el asset padre (fábrica) usando el ParentID
+        let factoryCode = selectedFactory || ''
+        if (parentId !== null && parentId !== undefined && assets) {
+          const parentAsset = assets.find(a => (a.ID || a.id) === parentId)
+          if (parentAsset) {
+            factoryCode = parentAsset.Code || parentAsset.code || selectedFactory || ''
+            debug.log(`🏭 Fábrica encontrada para línea ${lineCode}:`, factoryCode, 'desde ParentID:', parentId)
+          } else {
+            debug.warn(`⚠️ No se encontró asset padre para línea ${lineCode} con ParentID:`, parentId)
+          }
+        } else {
+          debug.warn(`⚠️ Línea ${lineCode} no tiene ParentID válido:`, parentId)
+        }
+        
+        // Asegurar que siempre haya una fábrica asignada
+        if (!factoryCode) {
+          factoryCode = selectedFactory || ''
+          debug.warn(`⚠️ Usando selectedFactory como fallback para línea ${lineCode}:`, factoryCode)
+        }
+        
+        return {
+          ...line,
+          code: lineCode,
+          id: line.ID || line.id || `line-${lineCode}`, // Asegurar que siempre haya un id único
+          parentId: parentId,
+          factory: factoryCode, // Siempre asignar una fábrica (nunca null/undefined)
+          line: lineCode,
+          // Mantener compatibilidad con código existente
+          hierarchical_level: line.hierarchical_level || [factoryCode, lineCode]
+        }
+      })
+      
+      debug.log('📝 Líneas mapeadas finales:', mappedLines.length)
+      if (mappedLines.length > 0) {
+        debug.log('📋 Primeras 3 líneas mapeadas:', mappedLines.slice(0, 3).map(l => ({
+          id: l.id,
+          code: l.code,
+          factory: l.factory,
+          parentId: l.parentId
+        })))
+      }
+      
+      setLines(mappedLines)
       clearError()
     } catch (err) {
       debug.error('❌ Error loading lines:', err)
@@ -207,6 +480,13 @@ function MaterialsConsumablesPage() {
   }
 
   const loadLinesWithData = async () => {
+    if (lines.length === 0) {
+      debug.log('⚠️ No hay líneas para cargar datos')
+      setLinesWithData([])
+      setLoadingLineData(false)
+      return
+    }
+    
     try {
       setLoadingLineData(true)
       // Limitar a las primeras 10 líneas para mejorar rendimiento inicial
@@ -216,20 +496,72 @@ function MaterialsConsumablesPage() {
       const linesData = await Promise.all(
         linesToLoad.map(async (line) => {
           try {
-            // Cargar órdenes para esta línea
+            // Normalizar propiedades de línea con fallbacks robustos
+            let factory = getFactoryFromLine(line)
+            // Si aún no hay factory, usar selectedFactory como último recurso
+            if (!factory && selectedFactory) {
+              factory = selectedFactory
+              debug.warn(`⚠️ Usando selectedFactory como fallback para línea ${line.code || line.line}:`, factory)
+            }
+            
+            const prodLine = line.line || line.code || ''
             const sapCode = line.sap_code || line.code || line.line || ''
-            const ordersResponse = await api.post('/sap/orders', {}, {
-              headers: {
-                'Content-Type': 'application/json',
-                'Factory': line.factory,
-                'ProdLine': line.line,
-                'SapCode': sapCode,
-                'SapRequest': 'false'
-              },
-              
-            })
+            
+            if (!factory) {
+              debug.error(`⚠️ No se pudo determinar la fábrica para línea:`, { 
+                hierarchical_level: line.hierarchical_level, 
+                factory: line.factory, 
+                location: line.location,
+                selectedFactory,
+                line 
+              })
+            }
+            
+            debug.log(`🔄 Cargando datos para línea:`, { factory, prodLine, sapCode, location: line.location, hierarchical_level: line.hierarchical_level })
+            
+            if (!factory || !prodLine) {
+              debug.error(`⚠️ Línea sin factory o prodLine:`, { factory, prodLine, line, selectedFactory })
+              return {
+                ...line,
+                orders: [],
+                activeOrder: null,
+                recipe: null
+              }
+            }
+            
+            // Cargar órdenes para esta línea
+            // Intentar sin SapRequest header primero para evitar CORS issues
+            let ordersResponse
+            try {
+              ordersResponse = await api.post('/sap/orders', {}, {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Factory': factory,
+                  'ProdLine': prodLine,
+                  'SapCode': sapCode
+                }
+              })
+            } catch (corsError) {
+              // Si falla por CORS, intentar con el header (aunque probablemente también falle)
+              debug.warn('⚠️ Error en primera llamada, reintentando con SapRequest header:', corsError.message)
+              try {
+                ordersResponse = await api.post('/sap/orders', {}, {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Factory': factory,
+                    'ProdLine': prodLine,
+                    'SapCode': sapCode,
+                    'SapRequest': 'false'
+                  }
+                })
+              } catch (retryError) {
+                // Si aún falla, lanzar el error original
+                throw corsError
+              }
+            }
             
             const ordersData = Array.isArray(ordersResponse) ? ordersResponse : []
+            debug.log(`✅ Órdenes cargadas para ${prodLine}:`, ordersData.length)
             
             // Buscar orden activa (Started pero no Finished)
             const activeOrder = ordersData.find(order => 
@@ -239,23 +571,24 @@ function MaterialsConsumablesPage() {
             let recipeData = null
             if (activeOrder) {
               try {
-                debug.log(`🔄 Cargando receta para línea ${line.line}, orden ${activeOrder.OrderNumber}`)
+                debug.log(`🔄 Cargando receta para línea ${prodLine}, orden ${activeOrder.OrderNumber}`)
                 // Cargar receta para la orden activa desde SAP
                 const recipeResponse = await api.get('/sap/orderRecipe', {
                   headers: {
-                    'Factory': line.factory,
-                    'ProdLine': line.line,
+                    'Content-Type': 'application/json',
+                    'Factory': factory,
+                    'ProdLine': prodLine,
                     'SapOrderCode': activeOrder.OrderNumber,
                     'SapRequest': 'true' // Cargar desde SAP
                   }
                 })
-                recipeData = recipeResponse
-                debug.log(`✅ Receta cargada para ${line.line}:`, recipeData ? `${recipeData.Components?.length || 0} componentes` : 'sin datos')
+                recipeData = recipeResponse || null
+                debug.log(`✅ Receta cargada para ${prodLine}:`, recipeData ? `${recipeData.Components?.length || 0} componentes` : 'sin datos')
               } catch (recipeErr) {
-                debug.error(`❌ Error cargando receta para ${line.line}:`, recipeErr.response?.data || recipeErr.message)
+                debug.error(`❌ Error cargando receta para ${prodLine}:`, recipeErr.response?.data || recipeErr.message)
               }
             } else {
-              debug.log(`⚠️ Línea ${line.line} no tiene orden activa`)
+              debug.log(`⚠️ Línea ${prodLine} no tiene orden activa`)
             }
             
             return {
@@ -265,38 +598,69 @@ function MaterialsConsumablesPage() {
               recipe: recipeData
             }
           } catch (err) {
-            debug.error(`Error cargando datos para línea ${line.line}:`, err)
+            debug.error(`❌ Error cargando datos para línea:`, err)
+            // Retornar la línea básica sin datos completos, pero aún así mostrarla
             return {
               ...line,
               orders: [],
               activeOrder: null,
-              recipe: null
+              recipe: null,
+              error: err.message
             }
           }
         })
       )
       
-      debug.log('✅ Datos completos cargados:', linesData)
-      setLinesWithData(linesData)
+      debug.log('✅ Datos completos cargados:', linesData.length, 'líneas')
+      // Filtrar líneas válidas (que tengan al menos un id o code)
+      const validLines = linesData.filter(line => line.id || line.code)
+      setLinesWithData(validLines)
+      
+      if (validLines.length === 0 && lines.length > 0) {
+        debug.warn('⚠️ No se pudieron cargar datos para ninguna línea, pero hay', lines.length, 'líneas disponibles')
+      }
     } catch (err) {
       debug.error('Error loading lines with data:', err)
+      // No mostrar error crítico, solo loguear
+      // Las líneas básicas se mostrarán de todas formas
+      debug.warn('⚠️ Error al cargar datos completos, pero se mostrarán las líneas básicas')
     } finally {
       setLoadingLineData(false)
     }
   }
 
   const loadOrders = async (fromSAP = false) => {
-    if (!selectedLine) return
+    if (!selectedLine) {
+      debug.log('⚠️ No selectedLine, retornando de loadOrders')
+      return
+    }
     
     try {
       setLoadingOrders(true)
       setUpdatingSAP(fromSAP)
       
+      // Normalizar propiedades de selectedLine con fallbacks robustos
+      let factory = getFactoryFromLine(selectedLine)
+      // Si aún no hay factory, usar selectedFactory como último recurso
+      if (!factory && selectedFactory) {
+        factory = selectedFactory
+        debug.warn(`⚠️ Usando selectedFactory como fallback en loadOrders:`, factory)
+      }
+      const prodLine = selectedLine.line || selectedLine.code || ''
       const sapCode = selectedLine.sap_code || selectedLine.code || selectedLine.line || ''
+      
+      if (!factory || !prodLine) {
+        debug.error(`⚠️ No se puede cargar órdenes: falta factory o prodLine:`, { factory, prodLine, selectedLine, selectedFactory })
+        showError('No se pudo determinar la fábrica o línea de producción')
+        return
+      }
+      
+      debug.log('🔄 Cargando órdenes para:', { factory, prodLine, sapCode, location: selectedLine.location, hierarchical_level: selectedLine.hierarchical_level })
+      
       const headers = {
         'Content-Type': 'application/json',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line,
+        'Factory': factory,
+        'ProdLine': prodLine,
         'SapCode': sapCode,
         'SapRequest': fromSAP ? 'true' : 'false'
       }
@@ -306,7 +670,7 @@ function MaterialsConsumablesPage() {
         
       })
       
-      const ordersData = Array.isArray(data) ? data : []
+      const ordersData = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
       debug.log('Orders loaded:', ordersData.length, ordersData)
       setOrders(ordersData)
       clearError()
@@ -322,290 +686,38 @@ function MaterialsConsumablesPage() {
     }
   }
 
-  const loadDosers = async () => {
-    debug.error('========================================')
-    debug.error('🚀 INICIANDO loadDosers()')
-    debug.error('========================================')
-    
-    if (!selectedLine) {
-      debug.error('⚠️ No selectedLine, retornando')
-      return
-    }
-    
-    try {
-      setLoadingDosers(true)
-      
-      // Debug: verificar estructura completa de selectedLine
-      debug.error('🔍 DEBUG loadDosers - selectedLine completo:')
-      debug.error(JSON.stringify(selectedLine, null, 2))
-      debug.error('🔍 selectedLine.id:', selectedLine.id)
-      debug.error('🔍 selectedLine.ID:', selectedLine.ID)
-      debug.error('🔍 typeof selectedLine.id:', typeof selectedLine.id)
-      
-      // Intentar con id minúscula o mayúscula
-      const lineId = selectedLine.id || selectedLine.ID
-      
-      if (!lineId) {
-        debug.error('❌ No se encontró ID de línea en selectedLine:', selectedLine)
-        debug.error('❌ Keys disponibles:', Object.keys(selectedLine))
-        setDosers([])
-        return
-      }
-      
-      debug.error('🔄 Cargando dosificadores para línea:', selectedLine.line, 'ID:', lineId, 'tipo:', typeof lineId)
-      debug.error('🔄 Headers que se enviarán:')
-      debug.error({
-        'Content-Type': 'application/json',
-        'ProdLine_ID': String(lineId)
-      })
-      debug.error('🔄 También enviando como query param: line_id=' + lineId)
-      
-      // Intentar con header Y query param
-      const response = await api.get('/asset/dosingbyline', {
-        params: {
-          line_id: lineId
-        },
-        headers: {
-          'Content-Type': 'application/json',
-          'ProdLine_ID': String(lineId)
-        },
-        
-      })
-      
-      const dosersData = Array.isArray(data) ? data : []
-      debug.error('✅ Dosificadores cargados:', dosersData.length, dosersData)
-      setDosers(dosersData)
-    } catch (err) {
-      debug.error('❌ Error loading dosers:', err)
-      debug.error('❌ Error response:', err.response?.data)
-      debug.error('❌ Error status:', err.response?.status)
-      debug.error('❌ Error config:', err.config)
-      // No mostrar error al usuario, solo log
-      setDosers([])
-    } finally {
-      setLoadingDosers(false)
-    }
-  }
-
-  const loadDoserConsumptions = async () => {
-    if (!selectedLine || !selectedLine.activeOrder) return
-    
-    try {
-      setLoadingConsumptionsForDosers(true)
-      debug.error('🔄 Cargando consumos para dosificadores')
-      
-      const response = await api.get('/sap/orderConsump/list', {
-        headers: {
-          'Content-Type': 'application/json',
-          'Factory': selectedLine.factory,
-          'ProdLine': selectedLine.line,
-          'System': 'Dosing',
-          'SapOrderCode': selectedLine.activeOrder.OrderNumber.trim(),
-          'SapRequest': 'false'
-        },
-        
-      })
-      
-      const consumptionsData = Array.isArray(data) ? data : []
-      debug.error('✅ Consumos cargados para dosificadores:', consumptionsData.length, consumptionsData)
-      setDoserConsumptions(consumptionsData)
-    } catch (err) {
-      debug.error('❌ Error loading doser consumptions:', err)
-      setDoserConsumptions([])
-    } finally {
-      setLoadingConsumptionsForDosers(false)
-    }
-  }
-
-  const handleDeleteAssignment = useCallback(async (doserName, hopperName, componentSapCode) => {
-    if (!selectedLine || !selectedLine.activeOrder) return
-    
-    if (!window.confirm(`¿Eliminar la asignación del componente ${componentSapCode} del hopper ${hopperName}?`)) {
-      return
-    }
-    
-    try {
-      debug.error('🗑️ Eliminando asignación:', componentSapCode, 'de', doserName, hopperName)
-      
-      const response = await api.get('/sap/orderConsump/del', {
-        headers: {
-          'Content-Type': 'application/json',
-          'Factory': selectedLine.factory,
-          'ProdLine': selectedLine.line,
-          'System': 'Dosing',
-          'Machine': doserName,
-          'Part': hopperName,
-          'SapOrderCode': selectedLine.activeOrder.OrderNumber.trim(),
-          'SapComponentCode': componentSapCode
-        },
-        
-      })
-      
-      debug.error('✅ Asignación eliminada:', data)
-      showSuccess(`✅ Componente ${componentSapCode} desasignado de ${hopperName}`)
-      
-      // Recargar consumos
-      await loadDoserConsumptions()
-      await loadLinesWithData()
-    } catch (err) {
-      debug.error('❌ Error eliminando asignación:', err)
-      showError('Error al eliminar la asignación del componente')
-    }
-  }, [selectedLine, loadDoserConsumptions, loadLinesWithData])
-
-  const handleAssignComponent = useCallback(async (componentSapCode) => {
-    const currentHopper = selectedHopper || tempHopper
-    if (!selectedLine || !selectedDoser || !currentHopper || !selectedLine.activeOrder) return
-    
-    try {
-      setAssigningComponent(true)
-      clearError()
-      debug.error('🔄 Asignando componente:', componentSapCode, 'a doser:', selectedDoser.name, 'hopper:', currentHopper.name)
-      
-      const response = await api.get('/sap/orderConsump/add', {
-        headers: {
-          'Content-Type': 'application/json',
-          'Factory': selectedLine.factory,
-          'ProdLine': selectedLine.line,
-          'System': 'Dosing', // Sistema de dosificación
-          'Machine': selectedDoser.name, // Nombre del doser
-          'Part': currentHopper.name, // Nombre del hopper
-          'SapOrderCode': selectedLine.activeOrder.OrderNumber.trim(),
-          'SapComponentCode': componentSapCode
-        },
-        
-      })
-      
-      debug.error('✅ Componente asignado exitosamente:', data)
-      showSuccess(`✅ Componente ${componentSapCode} asignado a ${selectedDoser.name} / ${currentHopper.name}`)
-      
-      // NO cerrar modal - mantener abierto para múltiples asignaciones
-      // El usuario debe cerrar manualmente cuando termine
-      
-      // Recargar consumos y líneas con datos actualizados
-      await loadDoserConsumptions()
-      await loadLinesWithData()
-    } catch (err) {
-      debug.error('❌ Error asignando componente:', err)
-      debug.error('❌ Error response:', err.response?.data)
-      
-      // Manejo de errores específicos
-      if (err.response?.status === 500) {
-        const errorMsg = err.response?.data?.Message || err.response?.data?.message || ''
-        if (errorMsg.includes('duplicate') || errorMsg.includes('unique constraint')) {
-          showError(`⚠️ Este hopper (${currentHopper.name}) ya tiene un componente asignado. Primero debes eliminar la asignación actual.`)
-        } else {
-          showError('❌ Error del servidor al asignar el componente. Revisa los logs del backend.')
-        }
-      } else {
-        showError('❌ Error al asignar el componente al dosificador')
-      }
-    } finally {
-      setAssigningComponent(false)
-    }
-  }, [selectedLine, selectedDoser, selectedHopper, tempHopper, loadDoserConsumptions, loadLinesWithData])
-
-  const handleStartFinish = async (orderNumber, action) => {
-    if (!selectedLine) return
-    
-    try {
-      setUpdatingOrder(orderNumber)
-      clearError()
-      
-      const sapCode = selectedLine.sap_code || selectedLine.code || selectedLine.line || ''
-      const headers = {
-        'Content-Type': 'application/json',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line,
-        'SapCode': sapCode,
-        'SapRequest': 'false',
-        'OrderNumber': orderNumber,
-        'StartFinish': action // 'Start' o 'Finish'
-      }
-      
-      const response = await api.get('/sap/orders/startFinish', {
-        headers: headers,
-        
-      })
-      
-      // Recargar órdenes después de actualizar
-      await loadOrders(false)
-      showSuccess(`Orden ${action === 'Start' ? 'iniciada' : 'finalizada'} exitosamente`)
-    } catch (err) {
-      debug.error(`Error ${action} order:`, err)
-      showError(`Error al ${action === 'Start' ? 'iniciar' : 'finalizar'} la orden`)
-    } finally {
-      setUpdatingOrder(null)
-    }
-  }
-
-  const handleEditDates = (order) => {
-    setEditingDates(order.OrderNumber)
-    // Formatear fechas para input datetime-local
-    const startDate = order.StarteddAt ? new Date(order.StarteddAt).toISOString().slice(0, 16) : ''
-    const endDate = order.FinishedAt ? new Date(order.FinishedAt).toISOString().slice(0, 16) : ''
-    setDateEdit({ start: startDate, end: endDate })
-  }
-
-  const handleSaveDates = async (orderNumber) => {
-    if (!selectedLine) return
-    
-    try {
-      setUpdatingOrder(orderNumber)
-      clearError()
-      
-      if (!dateEdit.start || !dateEdit.end) {
-        showError('Por favor, completa ambas fechas')
-        return
-      }
-      
-      const sapCode = selectedLine.sap_code || selectedLine.code || selectedLine.line || ''
-      const headers = {
-        'Content-Type': 'application/json',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line,
-        'SapCode': sapCode,
-        'SapRequest': 'false',
-        'OrderNumber': orderNumber,
-        'StarteddAt': new Date(dateEdit.start).toISOString(),
-        'FinishedAt': new Date(dateEdit.end).toISOString()
-      }
-      
-      await api.get('/sap/orders/update', {
-        headers: headers,
-        
-      })
-      
-      // Recargar órdenes después de actualizar
-      await loadOrders(false)
-      setEditingDates(null)
-      setDateEdit({ start: '', end: '' })
-      showSuccess('✅ Fechas actualizadas exitosamente')
-    } catch (err) {
-      debug.error('Error updating dates:', err)
-      showError('Error al actualizar las fechas')
-    } finally {
-      setUpdatingOrder(null)
-    }
-  }
-
-  const handleCancelEditDates = () => {
-    setEditingDates(null)
-    setDateEdit({ start: '', end: '' })
-  }
-
   const loadRecipe = async (fromSAP = false) => {
-    if (!selectedOrder || !selectedLine) return
+    if (!selectedOrder || !selectedLine) {
+      debug.log('⚠️ No selectedOrder o selectedLine, retornando de loadRecipe')
+      return
+    }
     
     try {
       setLoadingRecipe(true)
+      
+      // Normalizar propiedades de selectedLine con fallbacks robustos
+      let factory = getFactoryFromLine(selectedLine)
+      // Si aún no hay factory, usar selectedFactory como último recurso
+      if (!factory && selectedFactory) {
+        factory = selectedFactory
+        debug.warn(`⚠️ Usando selectedFactory como fallback en loadRecipe:`, factory)
+      }
+      const prodLine = selectedLine.line || selectedLine.code || ''
+      
+      if (!factory || !prodLine) {
+        debug.error(`⚠️ No se puede cargar receta: falta factory o prodLine:`, { factory, prodLine, selectedLine, selectedFactory })
+        showError('No se pudo determinar la fábrica o línea de producción')
+        return
+      }
+      
+      debug.log('🔄 Cargando receta para:', { orderNumber: selectedOrder.OrderNumber, factory, prodLine })
       
       const headers = {
         'Content-Type': 'application/json',
         'SapOrderCode': selectedOrder.OrderNumber,
         'SapRequest': fromSAP ? 'true' : 'false',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line
+        'Factory': factory,
+        'ProdLine': prodLine
       }
       
       const response = await api.get('/sap/orderRecipe', {
@@ -613,8 +725,10 @@ function MaterialsConsumablesPage() {
         
       })
       
-      setRecipe(data || null)
-      if (fromSAP && data) {
+      const recipeData = response || null
+      debug.log('✅ Receta cargada:', recipeData)
+      setRecipe(recipeData)
+      if (fromSAP && recipeData) {
         showSuccess('Receta cargada exitosamente desde SAP')
       }
     } catch (err) {
@@ -628,16 +742,25 @@ function MaterialsConsumablesPage() {
   }
 
   const loadConsumptions = async () => {
-    if (!selectedOrder || !selectedLine) return
+    if (!selectedOrder || !selectedLine) {
+      debug.log('⚠️ No selectedOrder o selectedLine, retornando de loadConsumptions')
+      return
+    }
     
     try {
       setLoadingConsumptions(true)
       clearError()
       
+      // Normalizar propiedades de selectedLine
+      const factory = getFactoryFromLine(selectedLine)
+      const prodLine = selectedLine.line || selectedLine.code || ''
+      
+      debug.log('🔄 Cargando consumos para:', { orderNumber: selectedOrder.OrderNumber, factory, prodLine })
+      
       const headers = {
         'Content-Type': 'application/json',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line,
+        'Factory': factory,
+        'ProdLine': prodLine,
         'System': '', // Puede estar vacío según el handler
         'SapOrderCode': selectedOrder.OrderNumber,
         'SapRequest': 'false'
@@ -648,7 +771,7 @@ function MaterialsConsumablesPage() {
         
       })
       
-      const consumptionsData = Array.isArray(data) ? data : []
+      const consumptionsData = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
       // Filtrar entradas vacías si el backend retorna un array con un elemento vacío
       const filteredConsumptions = consumptionsData.filter(c => 
         c.ComponentSapCode && c.ComponentSapCode.trim() !== ''
@@ -688,7 +811,7 @@ function MaterialsConsumablesPage() {
         
       })
       
-      const consumptionsData = Array.isArray(data) ? data : []
+      const consumptionsData = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
       const filteredConsumptions = consumptionsData.filter(c => 
         c.ComponentSapCode && c.ComponentSapCode.trim() !== ''
       )
@@ -708,44 +831,11 @@ function MaterialsConsumablesPage() {
     }
   }
 
+  // Función para editar consumo
   const handleDeleteConsumption = async (consumption) => {
     if (!selectedOrder || !selectedLine) return
-    if (!window.confirm('¿Estás seguro de eliminar este consumo?')) return
     
-    try {
-      clearError()
-      
-      const headers = {
-        'Content-Type': 'application/json',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line,
-        'System': '',
-        'Machine': consumption.DosingUnit,
-        'Part': consumption.DosingHopper,
-        'SapOrderCode': selectedOrder.OrderNumber,
-        'SapComponentCode': consumption.ComponentSapCode
-      }
-      
-      await api.get('/sap/orderConsump/del', {
-        headers: headers,
-        
-      })
-      
-      // Recargar consumos después de eliminar
-      await loadConsumptions()
-      showSuccess('Consumo eliminado exitosamente')
-    } catch (err) {
-      debug.error('Error deleting consumption:', err)
-      showError('Error al eliminar el consumo')
-    }
-  }
-
-  const handleAddConsumption = async () => {
-    if (!selectedOrder || !selectedLine) return
-    
-    // Validar campos requeridos
-    if (!newConsumption.DosingUnit.trim() || !newConsumption.DosingHopper.trim() || !newConsumption.ComponentSapCode.trim()) {
-      showError('Por favor, completa todos los campos requeridos')
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar la declaración de ${consumption.ComponentSapCode || 'este componente'}?`)) {
       return
     }
     
@@ -753,43 +843,1025 @@ function MaterialsConsumablesPage() {
       setAddingConsumption(true)
       clearError()
       
-      const headers = {
+      const deleteHeaders = {
         'Content-Type': 'application/json',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line,
+        'Factory': selectedLine.factory || getFactoryFromLine(selectedLine),
+        'ProdLine': selectedLine.line || selectedLine.code,
         'System': '',
-        'Machine': newConsumption.DosingUnit.trim(),
-        'Part': newConsumption.DosingHopper.trim(),
+        'Machine': consumption.DosingUnit || '',
+        'Part': consumption.DosingHopper || '',
         'SapOrderCode': selectedOrder.OrderNumber,
-        'SapComponentCode': newConsumption.ComponentSapCode.trim()
+        'SapComponentCode': consumption.ComponentSapCode || ''
       }
       
-      await api.get('/sap/orderConsump/add', {
-        headers: headers,
-        
+      await api.get('/sap/orderConsump/del', {
+        headers: deleteHeaders,
       })
       
-      // Cerrar modal y limpiar formulario
-      setShowAddModal(false)
-      setNewConsumption({
-        DosingUnit: '',
-        DosingHopper: '',
-        ComponentSapCode: ''
-      })
-      
-      // Recargar consumos después de agregar
+      // Recargar consumos después de eliminar
       await loadConsumptions()
-      // Recargar receta también por si acaso
-      await loadRecipe()
-      showSuccess('Consumo agregado exitosamente')
+      await loadRecipe(true)
+      
+      // Actualizar cantidad declarada localmente
+      const componentCode = consumption.ComponentSapCode
+      if (componentCode && consumption.CommittedQuantity) {
+        setDeclaredQuantities(prev => {
+          const currentTotal = prev[componentCode] || 0
+          const quantityToRemove = parseFloat(consumption.CommittedQuantity) || 0
+          const newTotal = Math.max(0, currentTotal - quantityToRemove)
+          if (newTotal <= 0) {
+            const newState = { ...prev }
+            delete newState[componentCode]
+            return newState
+          }
+          return {
+            ...prev,
+            [componentCode]: newTotal
+          }
+        })
+      }
+      
+      showSuccess('Declaración eliminada exitosamente')
     } catch (err) {
-      debug.error('Error adding consumption:', err)
-      const errorMessage = err.response?.data?.message || 'Error al agregar el consumo'
+      debug.error('Error deleting consumption:', err)
+      const errorMessage = err.response?.data?.message || 'Error al eliminar la declaración'
       showError(errorMessage)
     } finally {
       setAddingConsumption(false)
     }
   }
+
+  const handleEditConsumption = async (formData, originalConsumption) => {
+    if (!selectedOrder || !selectedLine) return
+    
+    try {
+      setAddingConsumption(true)
+      clearError()
+      
+      // Primero eliminar el consumo original
+      const deleteHeaders = {
+        'Content-Type': 'application/json',
+        'Factory': selectedLine.factory,
+        'ProdLine': selectedLine.line,
+        'System': '',
+        'Machine': originalConsumption.DosingUnit,
+        'Part': originalConsumption.DosingHopper,
+        'SapOrderCode': selectedOrder.OrderNumber,
+        'SapComponentCode': originalConsumption.ComponentSapCode
+      }
+      
+      await api.get('/sap/orderConsump/del', {
+        headers: deleteHeaders,
+      })
+      
+      // Luego agregar el consumo con los nuevos datos
+      const addHeaders = {
+        'Content-Type': 'application/json',
+        'Factory': selectedLine.factory,
+        'ProdLine': selectedLine.line,
+        'System': '',
+        'Machine': formData.DosingUnit.trim(),
+        'Part': formData.DosingHopper.trim(),
+        'SapOrderCode': selectedOrder.OrderNumber,
+        'SapComponentCode': formData.ComponentSapCode.trim()
+      }
+      
+      await api.get('/sap/orderConsump/add', {
+        headers: addHeaders,
+      })
+      
+      // Cerrar modal
+      setShowEditModal(false)
+      setEditingConsumption(null)
+      
+      // Recargar consumos después de editar
+      await loadConsumptions()
+      await loadRecipe(true)
+      showSuccess('Consumo editado exitosamente')
+    } catch (err) {
+      debug.error('Error editing consumption:', err)
+      const errorMessage = err.response?.data?.message || 'Error al editar el consumo'
+      showError(errorMessage)
+    } finally {
+      setAddingConsumption(false)
+    }
+  }
+
+  // Función para cargar dosificadores y hoppers desde la API
+  const loadDosifiersAndHoppersFromAPI = useCallback(async () => {
+    if (!selectedLine || !selectedOrder) {
+      return
+    }
+
+    try {
+      setLoadingDosifiersAPI(true)
+      clearError()
+
+      // Obtener el ID de la línea (puede ser code, id, o line)
+      // Intentar diferentes propiedades para obtener el ID
+      const prodLineId = selectedLine.id || 
+                        selectedLine.ID || 
+                        selectedLine.code || 
+                        selectedLine.Code || 
+                        selectedLine.line || 
+                        selectedLine.Line ||
+                        selectedLine.sap_code ||
+                        ''
+      const orderNumber = selectedOrder.OrderNumber
+
+      debug.log('🔍 Datos de selectedLine:', {
+        id: selectedLine.id,
+        ID: selectedLine.ID,
+        code: selectedLine.code,
+        Code: selectedLine.Code,
+        line: selectedLine.line,
+        Line: selectedLine.Line,
+        sap_code: selectedLine.sap_code,
+        selectedLineCompleto: selectedLine
+      })
+
+      if (!prodLineId) {
+        const errorMsg = 'No se pudo obtener el ID de la línea de producción. Propiedades disponibles: ' + Object.keys(selectedLine).join(', ')
+        debug.error('❌', errorMsg)
+        showError(errorMsg)
+        return
+      }
+
+      debug.log('🔄 Cargando dosificadores y hoppers desde API:', { 
+        prodLineId, 
+        orderNumber,
+        headers: {
+          'ProdLine_ID': String(prodLineId),
+          'SapOrderCode': orderNumber
+        }
+      })
+
+      const response = await api.get('/asset/dosingbyline', {
+        headers: {
+          'ProdLine_ID': String(prodLineId),
+          'SapOrderCode': orderNumber
+        }
+      })
+
+      debug.log('✅ Respuesta completa de /asset/dosingbyline:', JSON.stringify(response, null, 2))
+
+      // Manejar diferentes estructuras de respuesta
+      let processedResponse = response
+      if (response?.data && Array.isArray(response.data)) {
+        processedResponse = response.data
+      } else if (Array.isArray(response)) {
+        processedResponse = response
+      } else {
+        debug.error('❌ Respuesta no es un array:', response)
+        showError('La respuesta de la API no tiene el formato esperado')
+        setDosifiersFromAPI([])
+        setHoppersFromAPI([])
+        return
+      }
+
+      if (processedResponse.length === 0) {
+        debug.log('ℹ️ No se encontraron dosificadores para esta línea')
+        setDosifiersFromAPI([])
+        setHoppersFromAPI([])
+        return
+      }
+
+      debug.log('📦 Procesando', processedResponse.length, 'dosificadores')
+
+      const dosersData = []
+      const hoppersData = []
+
+      processedResponse.forEach((doser, index) => {
+        debug.log(`📦 Dosificador ${index + 1}:`, JSON.stringify(doser, null, 2))
+
+        // Intentar diferentes nombres de propiedades
+        // Convertir a string para consistencia en comparaciones
+        const doserId = String(doser.ID || doser.Id || doser.id || doser.DoserID || doser.DoserId || `doser_${index}`)
+        const doserName = doser.Name || doser.name || doser.DoserName || doser.Doser || `Dosificador ${index + 1}`
+        const doserDescription = doser.Description || doser.description || doserName
+        const doserLocation = doser.Location || doser.location || ''
+        const doserCode = doser.Code || doser.code || doser.SapCode || doser.sap_code || doserName
+
+        // Los hoppers son en realidad components (componentes) del dosificador
+        const components = doser.Components || doser.components || 
+                          doser.Component || doser.component ||
+                          []
+
+        debug.log(`  └─ Components encontrados:`, components.length, components)
+        debug.log(`  └─ Dosificador ID (string):`, doserId, 'Tipo:', typeof doserId)
+
+        dosersData.push({
+          id: doserId,
+          name: doserName,
+          description: doserDescription,
+          location: doserLocation,
+          code: doserCode, // Agregar código
+          rawData: doser // Guardar datos originales para debugging
+        })
+
+        // Procesar components (que son los hoppers)
+        if (Array.isArray(components) && components.length > 0) {
+          components.forEach((component, componentIndex) => {
+            // Convertir a string para consistencia
+            const componentId = String(component.ID || component.Id || component.id || 
+                               component.ComponentID || component.ComponentId || 
+                               component.PartID || component.PartId ||
+                               `${doserId}_component_${componentIndex}`)
+            const componentName = component.Name || component.name || 
+                                 component.ComponentName || component.Component || 
+                                 component.PartName || component.Part ||
+                                 `Component ${componentIndex + 1}`
+            const componentLocation = component.Location || component.location || ''
+            const componentCode = component.Code || component.code || component.SapCode || component.sap_code || componentName
+
+            hoppersData.push({
+              id: componentId,
+              name: componentName,
+              dosifierId: doserId, // Ya es string
+              dosifierName: doserName,
+              location: componentLocation,
+              code: componentCode, // Agregar código
+              rawData: component // Guardar datos originales para debugging
+            })
+
+            debug.log(`    └─ Component (Hopper) agregado:`, { 
+              id: componentId, 
+              name: componentName, 
+              dosifierId: doserId,
+              dosifierIdType: typeof doserId
+            })
+          })
+        } else {
+          debug.warn(`  ⚠️ Dosificador "${doserName}" no tiene components o la estructura es diferente`)
+        }
+      })
+
+      setDosifiersFromAPI(dosersData)
+      setHoppersFromAPI(hoppersData)
+      
+      debug.log('📦 Resumen final:', {
+        dosificadores: dosersData.length,
+        hoppers: hoppersData.length,
+        dosersData,
+        hoppersData
+      })
+
+      if (hoppersData.length === 0) {
+        debug.warn('⚠️ No se encontraron components (hoppers) en la respuesta. Estructura de datos:', JSON.stringify(processedResponse, null, 2))
+      }
+    } catch (err) {
+      debug.error('❌ Error cargando dosificadores desde /asset/dosingbyline:', err)
+      const errorMessage = err.response?.data?.message || err.message || 'Error al cargar dosificadores y hoppers'
+      showError(`Error: ${errorMessage}`)
+      setDosifiersFromAPI([])
+      setHoppersFromAPI([])
+    } finally {
+      setLoadingDosifiersAPI(false)
+    }
+  }, [selectedLine, selectedOrder, clearError, showError])
+
+  // Función para declarar consumo
+  const handleDeclareConsumption = async () => {
+    if (!selectedOrder || !selectedLine) {
+      showError('Selecciona una orden y línea primero')
+      return
+    }
+
+    // Validar campos requeridos
+    if (!declarationForm.componentSapCode.trim() || !declarationForm.dosifierId.trim() || !declarationForm.hopperId.trim() || !declarationForm.quantity.trim()) {
+      showError('Por favor, completa todos los campos requeridos')
+      return
+    }
+
+    // Validar que la cantidad sea un número positivo
+    const quantity = parseFloat(declarationForm.quantity)
+    if (isNaN(quantity) || quantity <= 0) {
+      showError('La cantidad debe ser un número positivo')
+      return
+    }
+
+    try {
+      setAddingConsumption(true)
+      clearError()
+
+      // Obtener el nombre del dosificador y hopper desde los datos cargados
+      const selectedDosifier = dosifiersFromAPI.find(d => String(d.id) === String(declarationForm.dosifierId))
+      const selectedHopper = hoppersFromAPI.find(h => String(h.id) === String(declarationForm.hopperId))
+
+      if (!selectedDosifier || !selectedHopper) {
+        debug.error('❌ No se encontraron dosificador o hopper:', {
+          dosifierId: declarationForm.dosifierId,
+          hopperId: declarationForm.hopperId,
+          dosifiersDisponibles: dosifiersFromAPI.map(d => ({ id: d.id, name: d.name })),
+          hoppersDisponibles: hoppersFromAPI.map(h => ({ id: h.id, name: h.name, dosifierId: h.dosifierId }))
+        })
+        showError('Error: No se encontraron los dosificadores o hoppers seleccionados')
+        return
+      }
+
+      debug.log('✅ Dosificador y hopper seleccionados:', {
+        dosifier: {
+          id: selectedDosifier.id,
+          name: selectedDosifier.name,
+          rawData: selectedDosifier.rawData
+        },
+        hopper: {
+          id: selectedHopper.id,
+          name: selectedHopper.name,
+          dosifierId: selectedHopper.dosifierId,
+          rawData: selectedHopper.rawData
+        }
+      })
+
+      // Obtener factory y prodLine: primero intentar como en handleEditConsumption, luego usar fallbacks como en loadOrders
+      // handleEditConsumption usa directamente selectedLine.factory y selectedLine.line
+      // Pero si no están disponibles, usar getFactoryFromLine como en loadOrders
+      const factory = selectedLine.factory || getFactoryFromLine(selectedLine)
+      const prodLine = selectedLine.line || selectedLine.code || ''
+
+      debug.log('🔍 Propiedades de selectedLine (combinando métodos de handleEditConsumption y loadOrders):', {
+        factoryDirecta: selectedLine.factory,
+        factoryDesdeGetFactory: getFactoryFromLine(selectedLine),
+        factoryFinal: factory,
+        lineDirecta: selectedLine.line,
+        code: selectedLine.code,
+        prodLineFinal: prodLine,
+        hierarchical_level: selectedLine.hierarchical_level,
+        selectedLineCompleto: selectedLine
+      })
+
+      // Validar que todos los valores requeridos estén presentes
+      if (!factory || !prodLine || !selectedDosifier.name || !selectedHopper.name || !selectedOrder.OrderNumber || !declarationForm.componentSapCode.trim()) {
+        debug.error('❌ Faltan valores requeridos:', {
+          factory,
+          prodLine,
+          machine: selectedDosifier.name,
+          part: selectedHopper.name,
+          orderNumber: selectedOrder.OrderNumber,
+          componentCode: declarationForm.componentSapCode.trim(),
+          selectedLineCompleto: selectedLine,
+          hierarchical_level: selectedLine.hierarchical_level,
+          factoryDirecta: selectedLine.factory,
+          lineDirecta: selectedLine.line
+        })
+        showError('Error: Faltan datos requeridos para declarar el consumo. Verifica que la línea tenga factory y line definidos.')
+        return
+      }
+
+      // Usar EXACTAMENTE el mismo formato que en handleEditConsumption
+      // Asegurar que todos los valores estén en el formato correcto (sin espacios extra, etc.)
+      // handleEditConsumption usa .trim() en Machine, Part y SapComponentCode
+      const headers = {
+        'Content-Type': 'application/json',
+        'Factory': factory.trim ? factory.trim() : factory,
+        'ProdLine': prodLine.trim ? prodLine.trim() : prodLine,
+        'System': '',
+        'Machine': selectedDosifier.name.trim(),
+        'Part': selectedHopper.name.trim(),
+        'SapOrderCode': selectedOrder.OrderNumber.trim ? selectedOrder.OrderNumber.trim() : selectedOrder.OrderNumber,
+        'SapComponentCode': declarationForm.componentSapCode.trim()
+      }
+      
+      // Asegurar que no haya valores undefined o null
+      Object.keys(headers).forEach(key => {
+        if (headers[key] === undefined || headers[key] === null) {
+          debug.error(`⚠️ Header ${key} tiene valor undefined o null:`, headers[key])
+          headers[key] = ''
+        }
+      })
+      
+      debug.log('📋 Headers finales para la API (comparar con handleEditConsumption):', {
+        headers: headers,
+        factory: factory,
+        prodLine: prodLine,
+        machine: selectedDosifier.name.trim(),
+        part: selectedHopper.name.trim(),
+        orderNumber: selectedOrder.OrderNumber,
+        componentCode: declarationForm.componentSapCode.trim()
+      })
+
+      // Comparar headers con los de handleEditConsumption para debugging
+      const expectedHeaders = {
+        'Content-Type': 'application/json',
+        'Factory': selectedLine.factory,
+        'ProdLine': selectedLine.line,
+        'System': '',
+        'Machine': selectedDosifier.name.trim(),
+        'Part': selectedHopper.name.trim(),
+        'SapOrderCode': selectedOrder.OrderNumber,
+        'SapComponentCode': declarationForm.componentSapCode.trim()
+      }
+      
+      debug.log('🔄 Headers para declarar consumo (comparación con handleEditConsumption):', {
+        headersActuales: headers,
+        headersEsperados: expectedHeaders,
+        sonIguales: JSON.stringify(headers) === JSON.stringify(expectedHeaders),
+        factory: {
+          actual: factory,
+          esperado: selectedLine.factory,
+          igual: factory === selectedLine.factory
+        },
+        prodLine: {
+          actual: prodLine,
+          esperado: selectedLine.line,
+          igual: prodLine === selectedLine.line
+        },
+        machine: {
+          actual: selectedDosifier.name.trim(),
+          esperado: selectedDosifier.name.trim(),
+          igual: true
+        },
+        part: {
+          actual: selectedHopper.name.trim(),
+          esperado: selectedHopper.name.trim(),
+          igual: true
+        },
+        orderNumber: selectedOrder.OrderNumber,
+        componentCode: declarationForm.componentSapCode.trim()
+      })
+
+      // Permitir múltiples declaraciones para la misma combinación (componente, dosificador, hopper)
+      // La API manejará las declaraciones repetidas según su lógica
+      debug.log('🔄 Declarando consumo (se permiten múltiples declaraciones):', {
+        component: declarationForm.componentSapCode,
+        dosifier: selectedDosifier.name,
+        hopper: selectedHopper.name,
+        quantityRequested: quantity,
+        headers: headers,
+        url: `${import.meta.env.VITE_API_URL || 'http://18.213.58.26:8081'}/sap/orderConsump/add`
+      })
+      
+      // Almacenar la cantidad declarada localmente ANTES de la llamada API (solo informativo, no se envía al backend)
+      // Esto asegura que se actualice inmediatamente en la UI
+      const componentCode = declarationForm.componentSapCode.trim()
+      if (quantity > 0) {
+        // Actualizar el estado de forma síncrona para que se refleje inmediatamente
+        setDeclaredQuantities(prev => {
+          const currentTotal = prev[componentCode] || 0
+          const newTotal = currentTotal + parseFloat(quantity)
+          const newState = {
+            ...prev,
+            [componentCode]: newTotal
+          }
+          debug.log('📝 Actualizando cantidad declarada localmente:', {
+            component: componentCode,
+            quantityAgregada: parseFloat(quantity),
+            totalAnterior: currentTotal,
+            totalNuevo: newTotal,
+            estadoAnterior: prev,
+            nuevoEstado: newState
+          })
+          return newState
+        })
+        
+        // La cantidad ya se guardó localmente, se mostrará en la tabla inmediatamente
+        debug.log(`✅ Cantidad ${quantity} guardada localmente para ${componentCode}`)
+      }
+      
+      // Llamar a la API del backend para declarar el consumo
+      try {
+        // Log detallado de lo que se va a enviar
+        debug.log('📡 Llamando a la API /sap/orderConsump/add:', {
+          endpoint: '/sap/orderConsump/add',
+          headers: headers,
+          headersString: JSON.stringify(headers),
+          urlCompleta: `${import.meta.env.VITE_API_URL || 'http://18.213.58.26:8081'}/sap/orderConsump/add`,
+          comparacionConEdit: {
+            factory: {
+              declarar: factory,
+              editar: selectedLine.factory,
+              igual: factory === selectedLine.factory
+            },
+            prodLine: {
+              declarar: prodLine,
+              editar: selectedLine.line,
+              igual: prodLine === selectedLine.line
+            }
+          }
+        })
+        
+        await api.get('/sap/orderConsump/add', {
+          headers: headers,
+        })
+        
+        debug.log('✅ API respondió correctamente, recargando datos...')
+        
+        // Si el backend responde correctamente, recargar datos
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await loadConsumptions()
+        await loadRecipe(true)
+        
+        showSuccess(`Consumo declarado exitosamente${quantity > 0 ? ` con cantidad ${quantity}` : ''}`)
+      } catch (backendErr) {
+        // Si el backend falla, la cantidad ya se guardó localmente
+        debug.error('❌ Error al llamar a la API del backend:', {
+          message: backendErr.message,
+          status: backendErr.status,
+          response: backendErr.response,
+          component: componentCode,
+          quantity: quantity
+        })
+        
+        // Mostrar mensaje informativo (no error crítico) ya que la cantidad se guardó localmente
+        if (quantity > 0) {
+          showSuccess(`Cantidad ${quantity} guardada localmente para ${componentCode}${backendErr.message && backendErr.message.includes('Registro no insertado') ? ' (el backend no pudo procesar la declaración)' : ' (error al comunicarse con el backend)'}`)
+        } else {
+          showSuccess(`Consumo declarado localmente${backendErr.message && backendErr.message.includes('Registro no insertado') ? ' (el backend no pudo procesar la declaración)' : ' (error al comunicarse con el backend)'}`)
+        }
+      }
+
+      // Limpiar formulario siempre (la cantidad ya se guardó localmente)
+      setDeclarationForm({
+        componentSapCode: '',
+        dosifierId: '',
+        hopperId: '',
+        quantity: ''
+      })
+    } catch (err) {
+      // Solo errores críticos que ocurran antes de guardar la cantidad localmente
+      // Construir objeto de logging de forma segura
+      const errorLogData = {
+        error: err,
+        message: err.message,
+        status: err.status,
+        response: err.response
+      }
+      
+      // Agregar headers solo si está definido (puede no estar si el error ocurre antes)
+      try {
+        if (typeof headers !== 'undefined') {
+          errorLogData.headers = headers
+        }
+        if (typeof selectedDosifier !== 'undefined') {
+          errorLogData.selectedDosifier = selectedDosifier
+        }
+        if (typeof selectedHopper !== 'undefined') {
+          errorLogData.selectedHopper = selectedHopper
+        }
+      } catch (e) {
+        // Ignorar errores al construir el log
+      }
+      
+      errorLogData.selectedLine = selectedLine
+      errorLogData.selectedOrder = selectedOrder
+      
+      debug.error('❌ Error crítico al declarar consumo:', errorLogData)
+      
+      // Intentar obtener más detalles del error
+      let errorMessage = 'Error al declarar el consumo'
+      
+      // El servidor puede devolver mensajes específicos como "Registro no insertado"
+      if (err.message && err.message !== `HTTP error! status: ${err.status}`) {
+        errorMessage = err.message
+        
+        // Mensaje más específico para "Registro no insertado"
+        if (err.message.includes('Registro no insertado')) {
+          errorMessage = 'No se pudo insertar el registro. Posibles causas:\n' +
+            '• Ya existe un consumo duplicado para esta combinación (componente, dosificador y hopper)\n' +
+            '• Los datos enviados no son válidos según las reglas del backend\n' +
+            '• Falta algún dato requerido que el backend necesita\n\n' +
+            'Verifica los logs de la consola para ver los datos exactos que se están enviando.'
+        }
+      } else if (err.status === 500) {
+        errorMessage = 'Error del servidor (500). Verifica los logs del backend para más detalles. Posibles causas: valores incorrectos en los headers o problema en el procesamiento del servidor.'
+      }
+      
+      showError(errorMessage)
+    } finally {
+      setAddingConsumption(false)
+    }
+  }
+
+  // Funciones para manejar Inicio y Fin de OF
+  const handleOpenStartModal = () => {
+    // Convertir la fecha actual a formato datetime-local si existe
+    if (ofStartDateTime) {
+      const date = new Date(ofStartDateTime)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      setTempStartDateTime(`${year}-${month}-${day}T${hours}:${minutes}`)
+    } else {
+      // Si no hay fecha, usar la fecha y hora actual
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      setTempStartDateTime(`${year}-${month}-${day}T${hours}:${minutes}`)
+    }
+    setShowStartModal(true)
+  }
+
+  const handleSaveStartDateTime = () => {
+    if (tempStartDateTime) {
+      setOfStartDateTime(new Date(tempStartDateTime))
+      showSuccess('Fecha y hora de inicio de OF guardada correctamente')
+    }
+    setShowStartModal(false)
+  }
+
+  const handleOpenEndModal = () => {
+    // Convertir la fecha actual a formato datetime-local si existe
+    if (ofEndDateTime) {
+      const date = new Date(ofEndDateTime)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      setTempEndDateTime(`${year}-${month}-${day}T${hours}:${minutes}`)
+    } else {
+      // Si no hay fecha, usar la fecha y hora actual
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      setTempEndDateTime(`${year}-${month}-${day}T${hours}:${minutes}`)
+    }
+    setShowEndModal(true)
+  }
+
+  const handleSaveEndDateTime = () => {
+    if (tempEndDateTime) {
+      setOfEndDateTime(new Date(tempEndDateTime))
+      showSuccess('Fecha y hora de fin de OF guardada correctamente')
+    }
+    setShowEndModal(false)
+  }
+
+  // Función para formatear fecha y hora para mostrar
+  const formatDateTime = (date) => {
+    if (!date) return 'No establecida'
+    const d = new Date(date)
+    return d.toLocaleString('es-ES', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  }
+
+  // Función para obtener la cantidad desde InfluxDB
+  const fetchQuantityFromInfluxDB = useCallback(async () => {
+    // Validar que todos los parámetros necesarios estén disponibles
+    if (!ofStartDateTime || !ofEndDateTime || !declarationForm.dosifierId || !declarationForm.hopperId || !selectedLine || !selectedOrder) {
+      return
+    }
+
+    // Obtener el dosificador y hopper seleccionados
+    const selectedDosifier = dosifiersFromAPI.find(d => String(d.id) === String(declarationForm.dosifierId))
+    const selectedHopper = hoppersFromAPI.find(h => String(h.id) === String(declarationForm.hopperId))
+
+    if (!selectedDosifier || !selectedHopper) {
+      return
+    }
+
+    try {
+      setLoadingQuantityFromInflux(true)
+      
+      // Obtener factory y prodLine
+      const factory = getFactoryFromLine(selectedLine)
+      const prodLine = selectedLine.line || selectedLine.code || ''
+
+      debug.log('📊 Consultando InfluxDB para obtener cantidad:', {
+        factory,
+        prodLine,
+        dosifier: selectedDosifier.name,
+        hopper: selectedHopper.name,
+        startDate: ofStartDateTime ? new Date(ofStartDateTime).toISOString() : null,
+        endDate: ofEndDateTime ? new Date(ofEndDateTime).toISOString() : null,
+        orderNumber: selectedOrder.OrderNumber
+      })
+
+      // Formatear fechas en formato ISO para la API
+      const startDateISO = new Date(ofStartDateTime).toISOString()
+      const endDateISO = new Date(ofEndDateTime).toISOString()
+
+      // Llamar a la API de InfluxDB
+      // El endpoint /sap/orderConsump/Calculate requiere estos headers:
+      // - Factory (requerido)
+      // - ProdLine (requerido)
+      // - SapOrderCode (requerido)
+      // - StartDate (requerido) - Fecha de inicio en formato ISO
+      // - EndDate (requerido) - Fecha de fin en formato ISO
+      // - SapCode (opcional)
+      const headers = {
+        'Content-Type': 'application/json',
+        'Factory': factory,
+        'ProdLine': prodLine,
+        'SapOrderCode': selectedOrder.OrderNumber.trim(),
+        'StartDate': startDateISO,
+        'EndDate': endDateISO
+      }
+
+      // Si hay SapCode disponible, agregarlo
+      if (selectedLine.sap_code) {
+        headers['SapCode'] = selectedLine.sap_code
+      }
+
+      const response = await api.get('/sap/orderConsump/Calculate', {
+        headers: headers,
+      })
+
+      // El response debería ser un array de consumos
+      // Buscar el consumo que coincida con el componente, dosificador y hopper seleccionados
+      const consumptionsData = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
+      
+      // Obtener el código del dosificador y hopper (usar code si está disponible, sino name)
+      const dosifierCode = selectedDosifier.code || selectedDosifier.name
+      const hopperCode = selectedHopper.code || selectedHopper.name
+      
+      debug.log('🔍 Buscando cantidad en consumptionsData:', {
+        dosifierCode,
+        hopperCode,
+        componentCode: declarationForm.componentSapCode,
+        totalConsumptions: consumptionsData.length,
+        consumptionsData: consumptionsData
+      })
+      
+      // Si hay un componente seleccionado, buscar el consumo específico para ese componente
+      if (declarationForm.componentSapCode) {
+        const matchingConsumption = consumptionsData.find(c => 
+          c.ComponentSapCode && c.ComponentSapCode.trim() === declarationForm.componentSapCode.trim() &&
+          c.DosingUnit && (c.DosingUnit.trim() === dosifierCode.trim() || c.DosingUnit.trim() === selectedDosifier.name.trim()) &&
+          c.DosingHopper && (c.DosingHopper.trim() === hopperCode.trim() || c.DosingHopper.trim() === selectedHopper.name.trim())
+        )
+
+        if (matchingConsumption && matchingConsumption.CommittedQuantity) {
+          const quantity = parseFloat(matchingConsumption.CommittedQuantity)
+          if (!isNaN(quantity) && quantity > 0) {
+            setDeclarationForm(prev => ({ ...prev, quantity: quantity.toFixed(3) }))
+            debug.log('✅ Cantidad obtenida desde InfluxDB (coincidencia exacta):', quantity)
+            return
+          }
+        }
+      }
+
+      // Si no hay componente seleccionado o no se encontró coincidencia exacta,
+      // sumar todas las cantidades para el dosificador y hopper seleccionados
+      const totalQuantity = consumptionsData
+        .filter(c => {
+          const matchesDosifier = c.DosingUnit && (
+            c.DosingUnit.trim() === dosifierCode.trim() || 
+            c.DosingUnit.trim() === selectedDosifier.name.trim()
+          )
+          const matchesHopper = c.DosingHopper && (
+            c.DosingHopper.trim() === hopperCode.trim() || 
+            c.DosingHopper.trim() === selectedHopper.name.trim()
+          )
+          return matchesDosifier && matchesHopper
+        })
+        .reduce((sum, c) => {
+          const qty = parseFloat(c.CommittedQuantity) || 0
+          return sum + qty
+        }, 0)
+
+      if (totalQuantity > 0) {
+        setDeclarationForm(prev => ({ ...prev, quantity: totalQuantity.toFixed(3) }))
+        debug.log('✅ Cantidad total obtenida desde InfluxDB:', totalQuantity)
+      } else {
+        debug.log('⚠️ No se encontró cantidad en InfluxDB para los parámetros especificados')
+        // No actualizar el campo si no hay datos
+      }
+    } catch (err) {
+      debug.error('❌ Error al consultar InfluxDB para obtener cantidad:', err)
+      // No mostrar error al usuario, solo loguear
+    } finally {
+      setLoadingQuantityFromInflux(false)
+    }
+  }, [ofStartDateTime, ofEndDateTime, declarationForm.dosifierId, declarationForm.hopperId, declarationForm.componentSapCode, selectedLine, selectedOrder, dosifiersFromAPI, hoppersFromAPI])
+
+  // useEffect para consultar InfluxDB cuando cambien los parámetros
+  useEffect(() => {
+    // Solo consultar si todos los parámetros están disponibles
+    if (ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId && selectedLine && selectedOrder) {
+      // Esperar un momento antes de consultar para evitar múltiples llamadas
+      const timeoutId = setTimeout(() => {
+        fetchQuantityFromInfluxDB()
+      }, 500)
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [ofStartDateTime, ofEndDateTime, declarationForm.dosifierId, declarationForm.hopperId, declarationForm.componentSapCode, fetchQuantityFromInfluxDB, selectedLine, selectedOrder])
+
+  // Cargar dosificadores y hoppers cuando cambian la línea u orden
+  useEffect(() => {
+    if (selectedLine && selectedOrder) {
+      loadDosifiersAndHoppersFromAPI()
+    } else {
+      setDosifiersFromAPI([])
+      setHoppersFromAPI([])
+    }
+  }, [selectedLine, selectedOrder, loadDosifiersAndHoppersFromAPI])
+
+  // Funciones CRUD para Dosificadores
+  const loadDosifiers = useCallback(() => {
+    // Extraer dosificadores únicos de los consumos
+    const dosersList = [...new Set(consumptions.map(c => c.DosingUnit).filter(Boolean))].sort()
+    const dosersData = dosersList.map(doser => ({
+      id: doser,
+      name: doser
+    }))
+    setDosifiers(dosersData)
+  }, [consumptions])
+
+  const handleAddDosifier = async (formData) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      // Por ahora, solo actualizamos el estado local
+      // En el futuro, esto podría llamar a un endpoint del backend
+      setDosifiers(prev => [...prev, { id: formData.name, name: formData.name, description: formData.description }])
+      showSuccess('Dosificador agregado exitosamente')
+      loadDosifiers()
+    } catch (err) {
+      debug.error('Error adding dosifier:', err)
+      showError('Error al agregar el dosificador')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  const handleEditDosifier = async (id, formData) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setDosifiers(prev => prev.map(d => d.id === id ? { ...d, ...formData } : d))
+      showSuccess('Dosificador editado exitosamente')
+    } catch (err) {
+      debug.error('Error editing dosifier:', err)
+      showError('Error al editar el dosificador')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  const handleDeleteDosifier = async (id) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setDosifiers(prev => prev.filter(d => d.id !== id))
+      showSuccess('Dosificador eliminado exitosamente')
+    } catch (err) {
+      debug.error('Error deleting dosifier:', err)
+      showError('Error al eliminar el dosificador')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  // Funciones CRUD para Hoppers
+  const loadHoppers = useCallback(() => {
+    // Extraer hoppers únicos de los consumos
+    const uniqueHoppers = []
+    const seen = new Set()
+    
+    consumptions.forEach(consumption => {
+      const doser = consumption.DosingUnit || 'Sin Dosificador'
+      const hopper = consumption.DosingHopper || 'Sin Hopper'
+      const key = `${doser}-${hopper}`
+      
+      if (!seen.has(key)) {
+        seen.add(key)
+        uniqueHoppers.push({
+          id: key,
+          name: hopper,
+          dosifier: doser,
+          dosifierId: doser
+        })
+      }
+    })
+    
+    setHoppers(uniqueHoppers)
+  }, [consumptions])
+
+  const handleAddHopper = async (formData) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setHoppers(prev => [...prev, {
+        id: `${formData.dosifierId}-${formData.name}`,
+        name: formData.name,
+        dosifier: formData.dosifierId,
+        dosifierId: formData.dosifierId,
+        description: formData.description
+      }])
+      showSuccess('Hopper agregado exitosamente')
+      loadHoppers()
+    } catch (err) {
+      debug.error('Error adding hopper:', err)
+      showError('Error al agregar el hopper')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  const handleEditHopper = async (id, formData) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setHoppers(prev => prev.map(h => h.id === id ? { ...h, ...formData } : h))
+      showSuccess('Hopper editado exitosamente')
+    } catch (err) {
+      debug.error('Error editing hopper:', err)
+      showError('Error al editar el hopper')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  const handleDeleteHopper = async (id) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setHoppers(prev => prev.filter(h => h.id !== id))
+      showSuccess('Hopper eliminado exitosamente')
+    } catch (err) {
+      debug.error('Error deleting hopper:', err)
+      showError('Error al eliminar el hopper')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  // Funciones CRUD para Componentes
+  const loadComponents = useCallback(() => {
+    // Extraer componentes únicos de los consumos
+    const compsList = [...new Set(consumptions.map(c => c.ComponentSapCode).filter(Boolean))].sort()
+    const compsData = compsList.map(comp => ({
+      id: comp,
+      sapCode: comp,
+      ComponentSapCode: comp
+    }))
+    setComponents(compsData)
+  }, [consumptions])
+
+  const handleAddComponent = async (formData) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setComponents(prev => [...prev, {
+        id: formData.sapCode,
+        sapCode: formData.sapCode,
+        ComponentSapCode: formData.sapCode,
+        description: formData.description,
+        unit: formData.unit
+      }])
+      showSuccess('Componente agregado exitosamente')
+      loadComponents()
+    } catch (err) {
+      debug.error('Error adding component:', err)
+      showError('Error al agregar el componente')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  const handleEditComponent = async (id, formData) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setComponents(prev => prev.map(c => c.id === id ? { ...c, ...formData, ComponentSapCode: formData.sapCode } : c))
+      showSuccess('Componente editado exitosamente')
+    } catch (err) {
+      debug.error('Error editing component:', err)
+      showError('Error al editar el componente')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  const handleDeleteComponent = async (id) => {
+    try {
+      setManagingCRUD(true)
+      clearError()
+      setComponents(prev => prev.filter(c => c.id !== id))
+      showSuccess('Componente eliminado exitosamente')
+    } catch (err) {
+      debug.error('Error deleting component:', err)
+      showError('Error al eliminar el componente')
+    } finally {
+      setManagingCRUD(false)
+    }
+  }
+
+  // Cargar datos cuando cambian los consumos
+  useEffect(() => {
+    if (consumptions.length > 0) {
+      loadDosifiers()
+      loadHoppers()
+      loadComponents()
+    }
+  }, [consumptions, loadDosifiers, loadHoppers, loadComponents])
+
 
   if (loading) {
     return <LoadingState message="Cargando líneas de producción..." fullScreen />
@@ -878,7 +1950,7 @@ function MaterialsConsumablesPage() {
               </div>
               {loadingLineData ? (
                 <LoadingState message="Cargando información completa de las líneas..." />
-              ) : linesWithData.length === 0 ? (
+              ) : (linesWithData.length === 0 && lines.length === 0) ? (
                 <EmptyState
                   icon={Factory}
                   title="No hay líneas disponibles"
@@ -886,7 +1958,8 @@ function MaterialsConsumablesPage() {
                 />
               ) : (
                 <div className="space-y-4">
-                  {linesWithData.map((line) => {
+                  {/* Mostrar líneas con datos completos primero */}
+                  {linesWithData.length > 0 && linesWithData.map((line) => {
                     const activeOrder = line.activeOrder
                     const recipe = line.recipe
                     const progress = activeOrder && activeOrder.QuantityToProduce > 0
@@ -946,34 +2019,58 @@ function MaterialsConsumablesPage() {
                             {/* Columna 1: Métricas de Línea */}
                             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                               <h4 className="text-sm font-semibold text-gray-400 mb-3 uppercase">Métricas de Línea</h4>
-                              <div className="space-y-3">
-                                {line.speed !== undefined && line.speed !== null && (
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-xs text-gray-400">Velocidad:</span>
-                                    <span className="text-lg font-bold text-white font-mono">{line.speed.toFixed(1)} <span className="text-sm text-gray-500">kg/h</span></span>
+                              {(line.speed !== undefined && line.speed !== null) || 
+                               (line.production !== undefined && line.production !== null) || 
+                               (line.oee !== undefined && line.oee !== null) ||
+                               line.last_update ? (
+                                <div className="space-y-3">
+                                  {line.speed !== undefined && line.speed !== null && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xs text-gray-400">Velocidad:</span>
+                                      <span className="text-lg font-bold text-white font-mono">{line.speed.toFixed(1)} <span className="text-sm text-gray-500">kg/h</span></span>
+                                    </div>
+                                  )}
+                                  {line.production !== undefined && line.production !== null && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xs text-gray-400">Producción:</span>
+                                      <span className="text-lg font-bold text-white font-mono">{line.production.toFixed(0)} <span className="text-sm text-gray-500">m</span></span>
+                                    </div>
+                                  )}
+                                  {line.oee !== undefined && line.oee !== null && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xs text-gray-400">OEE:</span>
+                                      <span className={`text-lg font-bold font-mono ${
+                                        line.oee >= 85 ? 'text-green-500' :
+                                        line.oee >= 70 ? 'text-yellow-500' :
+                                        'text-red-500'
+                                      }`}>
+                                        {line.oee.toFixed(1)}%
+                                      </span>
+                                    </div>
+                                  )}
+                                  {line.last_update && (
+                                    <div className="pt-2 border-t border-gray-700">
+                                      <p className="text-xs text-gray-500">Última actualización</p>
+                                      <p className="text-sm text-gray-300">
+                                        {new Date(line.last_update).toLocaleString('es-ES', {
+                                          day: '2-digit',
+                                          month: '2-digit',
+                                          year: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center h-full min-h-[150px]">
+                                  <div className="text-center">
+                                    <Package className="w-12 h-12 text-gray-600 mx-auto mb-2" />
+                                    <p className="text-sm text-gray-400">Sin métricas disponibles</p>
                                   </div>
-                                )}
-                                {line.production !== undefined && line.production !== null && (
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-xs text-gray-400">Producción:</span>
-                                    <span className="text-lg font-bold text-white font-mono">{line.production.toFixed(0)} <span className="text-sm text-gray-500">m</span></span>
-                                  </div>
-                                )}
-                                {line.last_update && (
-                                  <div className="pt-2 border-t border-gray-700">
-                                    <p className="text-xs text-gray-500">Última actualización</p>
-                                    <p className="text-sm text-gray-300">
-                                      {new Date(line.last_update).toLocaleString('es-ES', {
-                                        day: '2-digit',
-                                        month: '2-digit',
-                                        year: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Columna 2: Orden de Fabricación */}
@@ -1077,6 +2174,54 @@ function MaterialsConsumablesPage() {
                       </Card>
                     )
                   })}
+                  
+                  {/* Mostrar líneas sin datos completos (si hay líneas que no están en linesWithData o si linesWithData está vacío) */}
+                  {(lines.length > linesWithData.length || linesWithData.length === 0) && lines
+                    .filter(line => linesWithData.length === 0 || !linesWithData.find(lwd => (lwd.id || lwd.code) === (line.id || line.code)))
+                    .map((line) => {
+                      return (
+                        <Card 
+                          key={line.id || line.code}
+                          className="cursor-pointer hover:border-blue-500 transition-all"
+                          onClick={() => setSelectedLine(line)}
+                        >
+                          <div className="p-6">
+                            {/* Header de la línea */}
+                            <div className="flex items-center justify-between mb-4 border-b border-gray-700 pb-4">
+                              <div className="flex items-center gap-4">
+                                <Factory className="w-8 h-8 text-blue-400" />
+                                <div>
+                                  <h3 className="text-2xl font-bold text-white">{line.line || line.code}</h3>
+                                  <p className="text-sm text-gray-400">{line.location || line.factory} • <span className="font-mono">{line.code || line.sap_code || 'N/A'}</span></p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Badge variant="secondary">
+                                  Sin datos
+                                </Badge>
+                              </div>
+                            </div>
+                            
+                            {/* Información básica de la línea */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                                <span className="text-sm text-gray-400">Estado:</span>
+                                <Badge variant="secondary">Disponible</Badge>
+                              </div>
+                              <div className="text-center py-4">
+                                <p className="text-sm text-gray-400 mb-2">Haz clic para ver detalles y órdenes</p>
+                                {loadingLineData && (
+                                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Cargando información adicional...</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                      )
+                    })}
                 </div>
               )}
             </div>
@@ -1152,11 +2297,22 @@ function MaterialsConsumablesPage() {
                     ? Math.round((order.QuantityProduced / order.QuantityToProduce) * 100)
                     : 0
                   const isActive = order.StarteddAt && !order.FinishedAt
+                  const isSelected = selectedOrder && selectedOrder.OrderNumber === order.OrderNumber
                   
                   return (
                     <Card 
                       key={index}
-                      className="transition-all"
+                      className={`transition-all cursor-pointer ${isSelected ? 'border-blue-500 border-2' : 'hover:border-blue-500'}`}
+                      onClick={() => {
+                        setSelectedOrder(order)
+                        // Scroll suave a la sección de receta después de un breve delay
+                        setTimeout(() => {
+                          const recipeSection = document.querySelector('[data-recipe-section]')
+                          if (recipeSection) {
+                            recipeSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                          }
+                        }, 100)
+                      }}
                     >
                       <div className="p-6">
                         {/* Header de la orden */}
@@ -1164,7 +2320,14 @@ function MaterialsConsumablesPage() {
                           <div className="flex items-center gap-4">
                             <Package className="w-8 h-8 text-blue-400" />
                             <div>
-                              <h3 className="text-2xl font-bold text-white font-mono">{order.OrderNumber}</h3>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-2xl font-bold text-white font-mono">{order.OrderNumber}</h3>
+                                {isSelected && (
+                                  <Badge variant="info" className="text-xs">
+                                    Seleccionada
+                                  </Badge>
+                                )}
+                              </div>
                               <p className="text-sm text-gray-400">{order.ProductName || '-'}</p>
                             </div>
                           </div>
@@ -1179,7 +2342,7 @@ function MaterialsConsumablesPage() {
                         </div>
 
                         {/* Grid de información */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           {/* Columna 1: Información del Producto */}
                           <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                             <h4 className="text-sm font-semibold text-gray-400 mb-3 uppercase">Información del Producto</h4>
@@ -1231,210 +2394,12 @@ function MaterialsConsumablesPage() {
                               </div>
                             </div>
                           </div>
-
-                          {/* Columna 3: Fechas y Acciones */}
-                          <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                            <h4 className="text-sm font-semibold text-gray-400 mb-3 uppercase">Fechas y Acciones</h4>
-                            <div className="space-y-3">
-                              {/* Fechas */}
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <p className="text-xs text-gray-500 mb-1">Inicio</p>
-                                  {editingDates === order.OrderNumber ? (
-                                    <input
-                                      type="datetime-local"
-                                      value={dateEdit.start}
-                                      onChange={(e) => setDateEdit({ ...dateEdit, start: e.target.value })}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="w-full bg-gray-700 text-white text-xs px-2 py-1.5 rounded border border-gray-600"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-300">
-                                      {order.StarteddAt 
-                                        ? new Date(order.StarteddAt).toLocaleString('es-ES', {
-                                            day: '2-digit',
-                                            month: '2-digit',
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })
-                                        : '-'}
-                                    </p>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-500 mb-1">Fin</p>
-                                  {editingDates === order.OrderNumber ? (
-                                    <input
-                                      type="datetime-local"
-                                      value={dateEdit.end}
-                                      onChange={(e) => setDateEdit({ ...dateEdit, end: e.target.value })}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="w-full bg-gray-700 text-white text-xs px-2 py-1.5 rounded border border-gray-600"
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-gray-300">
-                                      {order.FinishedAt 
-                                        ? new Date(order.FinishedAt).toLocaleString('es-ES', {
-                                            day: '2-digit',
-                                            month: '2-digit',
-                                            year: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })
-                                        : '-'}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Botones de Acción */}
-                              <div className="pt-3 border-t border-gray-700 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                {editingDates === order.OrderNumber ? (
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => handleSaveDates(order.OrderNumber)}
-                                      disabled={updatingOrder === order.OrderNumber}
-                                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded text-sm transition-colors"
-                                    >
-                                      <CheckCircle2 className="w-4 h-4" />
-                                      <span className="text-white">Guardar</span>
-                                    </button>
-                                    <button
-                                      onClick={handleCancelEditDates}
-                                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition-colors"
-                                    >
-                                      <X className="w-4 h-4" />
-                                      <span className="text-white">Cancelar</span>
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => handleEditDates(order)}
-                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm transition-colors"
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                    <span className="text-white">Editar Fechas</span>
-                                  </button>
-                                )}
-                                
-                                {!order.StarteddAt && (
-                                  <button
-                                    onClick={() => handleStartFinish(order.OrderNumber, 'Start')}
-                                    disabled={updatingOrder === order.OrderNumber}
-                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded text-sm transition-colors"
-                                  >
-                                    {updatingOrder === order.OrderNumber ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <PlayCircle className="w-4 h-4" />
-                                    )}
-                                    <span className="text-white">Iniciar</span>
-                                  </button>
-                                )}
-                                
-                                {order.StarteddAt && !order.FinishedAt && (
-                                  <button
-                                    onClick={() => handleStartFinish(order.OrderNumber, 'Finish')}
-                                    disabled={updatingOrder === order.OrderNumber}
-                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 rounded text-sm transition-colors"
-                                  >
-                                    {updatingOrder === order.OrderNumber ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <StopCircle className="w-4 h-4" />
-                                    )}
-                                    <span className="text-white">Finalizar</span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
                         </div>
                       </div>
                     </Card>
                   )
                 })}</div>
               </>
-            )}
-
-            {/* Dosers Section */}
-            {!selectedOrder && (
-              <Card className="mb-6">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                      <BoxSelect className="w-6 h-6 text-purple-400" />
-                      Dosificadores de la Línea
-                    </h2>
-                    <button
-                      onClick={loadDosers}
-                      disabled={loadingDosers}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors text-white text-sm"
-                    >
-                      {loadingDosers ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-4 h-4" />
-                      )}
-                      <span>Actualizar</span>
-                    </button>
-                  </div>
-
-                  {loadingDosers ? (
-                    <div className="p-8 text-center">
-                      <Loader2 className="w-10 h-10 text-purple-500 animate-spin mx-auto mb-3" />
-                      <p className="text-gray-400">Cargando dosificadores...</p>
-                    </div>
-                  ) : dosers.length === 0 ? (
-                    <div className="p-8 text-center">
-                      <BoxSelect className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                      <p className="text-gray-400">No hay dosificadores configurados para esta línea</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {dosers.map((doser) => {
-                        const assignedHoppers = doserConsumptions.filter(c => c.DosingUnit === doser.name)
-                        
-                        return (
-                          <DoserCard
-                            key={doser.id}
-                            doser={doser}
-                            assignedHoppers={assignedHoppers}
-                            onAddHopper={() => {
-                              setSelectedDoser(doser)
-                              setSelectedHopper(null)
-                              setShowAssignModal(true)
-                            }}
-                            onDeleteAssignment={handleDeleteAssignment}
-                          />
-                        )
-                      })}
-                    </div>
-                  )}
-                  
-                  {/* Botón Guardar Todo y Continuar a Consumos */}
-                  {!loadingDosers && dosers.length > 0 && selectedLine.activeOrder && (
-                    <div className="mt-6 pt-6 border-t border-gray-700">
-                      <button
-                        onClick={() => {
-                          // Seleccionar automáticamente la orden activa para ir a la vista de consumos
-                          setSelectedOrder(selectedLine.activeOrder)
-                          showSuccess('✅ Configuración guardada. Cargando vista de consumos...')
-                        }}
-                        className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 rounded-lg transition-all shadow-lg"
-                      >
-                        <CheckCircle2 className="w-6 h-6 text-white" />
-                        <span className="text-white font-bold text-lg">Guardar Todo y Continuar a Consumos</span>
-                        <ChevronRight className="w-6 h-6 text-white" />
-                      </button>
-                      <p className="text-xs text-center text-gray-400 mt-2">
-                        Los cambios ya están guardados. Este botón te llevará a la vista de cálculo de consumos.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </Card>
             )}
           </>
         )}
@@ -1466,25 +2431,6 @@ function MaterialsConsumablesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowAddModal(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-white">Agregar Consumo</span>
-                    </button>
-                    <button
-                      onClick={() => loadRecipe(true)}
-                      disabled={loadingRecipe}
-                      className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors"
-                    >
-                      {loadingRecipe ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-4 h-4" />
-                      )}
-                      <span className="text-white">Cargar Receta desde SAP</span>
-                    </button>
                     <button
                       onClick={handleCalculateConsumptions}
                       disabled={loadingConsumptions}
@@ -1525,7 +2471,7 @@ function MaterialsConsumablesPage() {
                   Resumen de Orden de Fabricación
                 </h3>
                 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Información de la OF */}
                   <div className="lg:col-span-1 bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                     <h4 className="text-sm font-semibold text-gray-400 mb-3 uppercase">Datos de la OF</h4>
@@ -1596,111 +2542,14 @@ function MaterialsConsumablesPage() {
                         </div>
                       </div>
 
-                      {/* Fechas */}
-                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-700">
-                        <div>
-                          <p className="text-xs text-gray-500">Inicio</p>
-                          <p className="text-sm text-gray-300">
-                            {selectedOrder.StarteddAt 
-                              ? new Date(selectedOrder.StarteddAt).toLocaleString('es-ES', {
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : '-'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Fin</p>
-                          <p className="text-sm text-gray-300">
-                            {selectedOrder.FinishedAt 
-                              ? new Date(selectedOrder.FinishedAt).toLocaleString('es-ES', {
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : '-'}
-                          </p>
-                        </div>
-                      </div>
                     </div>
-                  </div>
-
-                  {/* Información de Receta */}
-                  <div className="lg:col-span-1 bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                    <h4 className="text-sm font-semibold text-gray-400 mb-3 uppercase">Receta</h4>
-                    {loadingRecipe ? (
-                      <div className="flex items-center justify-center h-full min-h-[200px]">
-                        <div className="text-center">
-                          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-2" />
-                          <p className="text-sm text-gray-400">Cargando...</p>
-                        </div>
-                      </div>
-                    ) : recipe && recipe.Components && recipe.Components.length > 0 ? (
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-xs text-gray-500">Código SAP Receta</p>
-                          <p className="text-sm font-mono text-white">{recipe.SapCode || selectedOrder.OrderNumber}</p>
-                        </div>
-                        {recipe.Description && (
-                          <div>
-                            <p className="text-xs text-gray-500">Descripción</p>
-                            <p className="text-sm text-gray-300 line-clamp-2">{recipe.Description}</p>
-                          </div>
-                        )}
-                        <div className="pt-2 border-t border-gray-700">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-gray-500">Componentes</p>
-                            <Badge variant="info">
-                              {recipe.Components.length} {recipe.Components.length === 1 ? 'componente' : 'componentes'}
-                            </Badge>
-                          </div>
-                          <div className="mt-3 space-y-2 max-h-[150px] overflow-y-auto">
-                            {recipe.Components.map((component, index) => (
-                              <div key={index} className="flex items-center justify-between bg-gray-900/50 rounded p-2">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-mono text-gray-400 truncate">{component.SapCode || '-'}</p>
-                                  <p className="text-xs text-gray-500 truncate">{component.Description || '-'}</p>
-                                </div>
-                                <div className="text-right ml-2">
-                                  <p className="text-xs font-medium text-white">{component.RequiredQuantity || '0'}</p>
-                                  <p className="text-xs text-gray-500">{component.MeasurementUnitRQ || ''}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center h-full min-h-[200px]">
-                        <div className="text-center">
-                          <Package className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-                          <p className="text-sm text-gray-400 mb-3">Sin receta cargada</p>
-                          <button
-                            onClick={() => loadRecipe(true)}
-                            disabled={loadingRecipe}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-sm transition-colors mx-auto"
-                          >
-                            {loadingRecipe ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="w-3 h-3" />
-                            )}
-                            <span className="text-white text-xs">Cargar desde SAP</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
             </Card>
 
             {/* Recipe and Components */}
+            <div data-recipe-section>
             {loadingRecipe ? (
               <Card className="mb-6">
                 <div className="p-12 text-center">
@@ -1733,13 +2582,28 @@ function MaterialsConsumablesPage() {
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Dosificador(es)</th>
                           <th className="text-right py-3 px-4 text-sm font-semibold text-gray-300">Cantidad Requerida</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Unidad</th>
-                          <th className="text-right py-3 px-4 text-sm font-semibold text-gray-300">Cantidad Comprometida</th>
+                          <th className="text-right py-3 px-4 text-sm font-semibold text-gray-300">Cantidad Declarada</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Unidad</th>
                           <th className="text-right py-3 px-4 text-sm font-semibold text-gray-300">Cantidad Retirada</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {recipe.Components.map((component, index) => (
+                        {recipe.Components.map((component, index) => {
+                          // Calcular cantidad declarada fuera del JSX para mejor debugging
+                          const componentCode = (component.SapCode || '').trim()
+                          // Buscar la cantidad declarada localmente (buscar en diferentes formatos de clave)
+                          const declaredQuantityLocal = declaredQuantities[componentCode] || 
+                                                        declaredQuantities[componentCode.toUpperCase()] || 
+                                                        declaredQuantities[componentCode.toLowerCase()] || 
+                                                        (() => {
+                                                          // Buscar por coincidencia parcial si no hay coincidencia exacta
+                                                          const matchingKey = Object.keys(declaredQuantities).find(key => 
+                                                            key.trim().toUpperCase() === componentCode.toUpperCase()
+                                                          )
+                                                          return matchingKey ? declaredQuantities[matchingKey] : 0
+                                                        })()
+                          
+                          return (
                           <tr key={index} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
                             <td className="py-3 px-4 text-gray-300 font-mono text-sm">{component.SapCode || '-'}</td>
                             <td className="py-3 px-4 text-gray-300">{component.Description || '-'}</td>
@@ -1758,11 +2622,36 @@ function MaterialsConsumablesPage() {
                             </td>
                             <td className="py-3 px-4 text-right text-white font-medium">{component.RequiredQuantity || '0'}</td>
                             <td className="py-3 px-4 text-gray-400 text-sm">{component.MeasurementUnitRQ || '-'}</td>
-                            <td className="py-3 px-4 text-right text-white font-medium">{component.CommittedQuantity || '0'}</td>
-                            <td className="py-3 px-4 text-gray-400 text-sm">{component.MeasurementUnitCQ || '-'}</td>
+                            <td className="py-3 px-4 text-right">
+                              {(() => {
+                                // Calcular cantidad declarada sumando los consumos para este componente
+                                const declaredQuantityFromConsumptions = consumptions
+                                  .filter(c => {
+                                    // Comparar códigos SAP (pueden tener espacios o diferencias de formato)
+                                    const consumptionCode = (c.ComponentSapCode || '').trim().toUpperCase()
+                                    const compCode = componentCode.toUpperCase()
+                                    return consumptionCode === compCode
+                                  })
+                                  .reduce((sum, c) => {
+                                    const qty = parseFloat(c.CommittedQuantity) || 0
+                                    return sum + qty
+                                  }, 0)
+                                
+                                // Mostrar siempre 0 en cantidad declarada (limpiado según solicitud del usuario)
+                                const displayQuantity = '0'
+                                
+                                return (
+                                  <span className="text-white font-medium">
+                                    {displayQuantity}
+                                  </span>
+                                )
+                              })()}
+                            </td>
+                            <td className="py-3 px-4 text-gray-400 text-sm">{component.MeasurementUnitCQ || component.MeasurementUnitRQ || '-'}</td>
                             <td className="py-3 px-4 text-right text-white font-medium">{component.WithDrawnQuantity || '0'}</td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1817,114 +2706,538 @@ function MaterialsConsumablesPage() {
                 </div>
               </Card>
             ) : null}
+            </div>
 
-            {/* Consumptions Table */}
-            {loadingConsumptions ? (
-              <Card>
-                <div className="p-12 text-center">
-                  <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
-                  <p className="text-gray-400">Cargando consumos...</p>
-                </div>
-              </Card>
-            ) : consumptions.length === 0 ? (
-              <Card>
-                <div className="p-12 text-center">
-                  <BoxSelect className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-400 text-lg">No hay consumos registrados para esta orden</p>
-                  <p className="text-gray-500 text-sm mt-2 mb-4">
-                    Los consumos se calculan desde InfluxDB o se agregan manualmente
-                  </p>
-                  <button
-                    onClick={() => setShowAddModal(true)}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-white">Agregar Consumo Manual</span>
-                  </button>
-                </div>
-              </Card>
-            ) : (
-              <Card>
+            {/* Botones de Inicio y Fin de OF */}
+            {selectedLine && selectedOrder && (
+              <Card className="mb-6">
                 <div className="p-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Consumos de Materiales</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-700">
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Unidad de Dosificación</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Tolva</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Código SAP Receta</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Código SAP Componente</th>
-                          <th className="text-right py-3 px-4 text-sm font-semibold text-gray-300">Cantidad Comprometida</th>
-                          <th className="text-center py-3 px-4 text-sm font-semibold text-gray-300">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {consumptions.map((consumption, index) => (
-                          <tr key={index} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
-                            <td className="py-3 px-4 text-white">{consumption.DosingUnit || '-'}</td>
-                            <td className="py-3 px-4 text-gray-300">{consumption.DosingHopper || '-'}</td>
-                            <td className="py-3 px-4 text-gray-300 font-mono text-sm">{consumption.RecipeSapCode || '-'}</td>
-                            <td className="py-3 px-4 text-gray-300 font-mono text-sm">{consumption.ComponentSapCode || '-'}</td>
-                            <td className="py-3 px-4 text-right text-white font-medium">
-                              {consumption.CommittedQuantity?.toFixed(2) || '0.00'}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => handleDeleteConsumption(consumption)}
-                                  className="p-2 text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
-                                  title="Eliminar"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="flex items-center gap-4">
+                    {/* Botón Inicio OF */}
+                    <div className="flex-1">
+                      <button
+                        onClick={handleOpenStartModal}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-green-600 hover:bg-green-700 rounded-lg transition-colors text-white"
+                      >
+                        <div className="flex items-center gap-3">
+                          <PlayCircle className="w-5 h-5" />
+                          <div className="text-left">
+                            <div className="font-semibold">Inicio OF</div>
+                            <div className="text-xs text-green-100">
+                              {formatDateTime(ofStartDateTime)}
+                            </div>
+                          </div>
+                        </div>
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Botón Fin OF */}
+                    <div className="flex-1">
+                      <button
+                        onClick={handleOpenEndModal}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-white"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Square className="w-5 h-5" />
+                          <div className="text-left">
+                            <div className="font-semibold">Fin OF</div>
+                            <div className="text-xs text-red-100">
+                              {formatDateTime(ofEndDateTime)}
+                            </div>
+                          </div>
+                        </div>
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Card de Declaración de Consumo */}
+            {selectedLine && selectedOrder && recipe && recipe.Components && recipe.Components.length > 0 && (
+              <Card className="mb-6">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold text-white">Declaración de Consumo</h3>
+                    <Badge variant="info">Nuevo</Badge>
+                  </div>
+                  
+                  <p className="text-sm text-gray-400 mb-6">
+                    Asocia un componente de la receta con un dosificador y hopper para declarar el consumo
+                  </p>
+
+                  {loadingDosifiersAPI ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 text-blue-500 animate-spin mr-3" />
+                      <p className="text-gray-400">Cargando dosificadores y hoppers...</p>
+                    </div>
+                  ) : dosifiersFromAPI.length === 0 ? (
+                    <div className="text-center py-8">
+                      <AlertCircle className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                      <p className="text-gray-400">No se encontraron dosificadores para esta línea</p>
+                      <button
+                        onClick={loadDosifiersAndHoppersFromAPI}
+                        className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-white text-sm"
+                      >
+                        <RefreshCw className="w-4 h-4 inline mr-2" />
+                        Recargar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Selector de Componente */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Componente de la Receta <span className="text-red-400">*</span>
+                        </label>
+                        <select
+                          value={declarationForm.componentSapCode}
+                          onChange={(e) => {
+                            setDeclarationForm(prev => ({
+                              ...prev,
+                              componentSapCode: e.target.value,
+                              // Limpiar hopper cuando cambia el componente
+                              hopperId: ''
+                            }))
+                          }}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Selecciona un componente</option>
+                          {recipe.Components.map((component, idx) => (
+                            <option key={idx} value={component.SapCode}>
+                              {component.SapCode} - {component.Description || 'Sin descripción'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Selector de Dosificador */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Dosificador <span className="text-red-400">*</span>
+                        </label>
+                        <select
+                          value={declarationForm.dosifierId}
+                          onChange={(e) => {
+                            setDeclarationForm(prev => ({
+                              ...prev,
+                              dosifierId: e.target.value,
+                              // Limpiar hopper cuando cambia el dosificador
+                              hopperId: ''
+                            }))
+                          }}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Selecciona un dosificador</option>
+                          {dosifiersFromAPI.map((dosifier) => (
+                            <option key={dosifier.id} value={dosifier.id}>
+                              {dosifier.code || dosifier.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Selector de Hopper */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Hopper <span className="text-red-400">*</span>
+                        </label>
+                        <select
+                          value={declarationForm.hopperId}
+                          onChange={(e) => setDeclarationForm(prev => ({ ...prev, hopperId: e.target.value }))}
+                          disabled={!declarationForm.dosifierId}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">
+                            {declarationForm.dosifierId ? 'Selecciona un hopper' : 'Primero selecciona un dosificador'}
+                          </option>
+                          {hoppersFromAPI
+                            .filter(hopper => {
+                              // Comparar como strings para evitar problemas de tipo
+                              const hopperDosifierId = String(hopper.dosifierId)
+                              const selectedDosifierId = String(declarationForm.dosifierId)
+                              const matches = hopperDosifierId === selectedDosifierId
+                              
+                              // Debug en desarrollo
+                              if (isDev && declarationForm.dosifierId) {
+                                debug.log('🔍 Filtrando hopper:', {
+                                  hopperId: hopper.id,
+                                  hopperName: hopper.name,
+                                  hopperDosifierId,
+                                  selectedDosifierId,
+                                  matches,
+                                  allHoppers: hoppersFromAPI.map(h => ({ id: h.id, dosifierId: String(h.dosifierId) }))
+                                })
+                              }
+                              
+                              return matches
+                            })
+                            .map((hopper) => (
+                              <option key={hopper.id} value={hopper.id}>
+                                {hopper.code || hopper.name}
+                              </option>
+                            ))}
+                        </select>
+                        {declarationForm.dosifierId && hoppersFromAPI.filter(h => String(h.dosifierId) === String(declarationForm.dosifierId)).length === 0 && (
+                          <div className="mt-2 p-3 bg-yellow-900/20 border border-yellow-700/50 rounded-lg">
+                            <p className="text-xs text-yellow-400 mb-2">
+                              ⚠️ No hay components (hoppers) disponibles para este dosificador
+                            </p>
+                            <div className="text-xs text-gray-500 space-y-1">
+                              <p>• Total de components cargados: {hoppersFromAPI.length}</p>
+                              <p>• Dosificador seleccionado ID: {declarationForm.dosifierId}</p>
+                              {isDev && (
+                                <>
+                                  <p>• Components (Hoppers) disponibles: {JSON.stringify(hoppersFromAPI.map(h => ({ id: h.id, dosifierId: h.dosifierId, name: h.name })), null, 2)}</p>
+                                  <p>• Dosificadores cargados: {JSON.stringify(dosifiersFromAPI.map(d => ({ id: d.id, name: d.name })), null, 2)}</p>
+                                </>
+                              )}
+                            </div>
+                            <button
+                              onClick={loadDosifiersAndHoppersFromAPI}
+                              className="mt-2 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 rounded text-white text-xs flex items-center gap-1"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Recargar desde API
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Campo de Cantidad */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium text-gray-300">
+                            Cantidad a Declarar <span className="text-red-400">*</span>
+                          </label>
+                          {ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId && (
+                            <button
+                              type="button"
+                              onClick={fetchQuantityFromInfluxDB}
+                              disabled={loadingQuantityFromInflux}
+                              className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white transition-colors"
+                              title="Recargar cantidad desde InfluxDB"
+                            >
+                              {loadingQuantityFromInflux ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <span>Cargando...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>Desde InfluxDB</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.001"
+                            min="0"
+                            value={declarationForm.quantity}
+                            onChange={(e) => setDeclarationForm(prev => ({ ...prev, quantity: e.target.value }))}
+                            placeholder={loadingQuantityFromInflux ? "Cargando desde InfluxDB..." : (ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId ? "Se cargará automáticamente desde InfluxDB" : "Ingresa la cantidad")}
+                            disabled={loadingQuantityFromInflux}
+                            className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                          {declarationForm.componentSapCode && (() => {
+                            const selectedComponent = recipe?.Components?.find(c => c.SapCode === declarationForm.componentSapCode)
+                            const unit = selectedComponent?.MeasurementUnitRQ || selectedComponent?.MeasurementUnitCQ || 'KG'
+                            return (
+                              <span className="px-3 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm font-medium min-w-[60px] text-center">
+                                {unit}
+                              </span>
+                            )
+                          })()}
+                        </div>
+                        {declarationForm.componentSapCode && (() => {
+                          const selectedComponent = recipe?.Components?.find(c => c.SapCode === declarationForm.componentSapCode)
+                          if (selectedComponent) {
+                            return (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Cantidad requerida: {selectedComponent.RequiredQuantity || '0'} {selectedComponent.MeasurementUnitRQ || ''}
+                              </p>
+                            )
+                          }
+                          return null
+                        })()}
+                        {ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId && (
+                          <p className="text-xs text-blue-400 mt-1">
+                            💡 La cantidad se obtendrá automáticamente desde InfluxDB usando: Inicio OF, Fin OF, Dosificador y Hopper
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Botón de Declarar */}
+                      <div className="flex justify-end pt-4 border-t border-gray-700">
+                        <button
+                          onClick={handleDeclareConsumption}
+                          disabled={addingConsumption || !declarationForm.componentSapCode || !declarationForm.dosifierId || !declarationForm.hopperId || !declarationForm.quantity}
+                          className="flex items-center gap-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors text-white font-medium"
+                        >
+                          {addingConsumption ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Declarando...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="w-4 h-4" />
+                              <span>Declarar Consumo</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {/* Card de Declaraciones Registradas */}
+            {selectedLine && selectedOrder && consumptions && consumptions.length > 0 && (
+              <Card className="mb-6">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold text-white">Declaraciones Registradas</h3>
+                    <Badge variant="secondary" className="text-sm">
+                      {consumptions.length} {consumptions.length === 1 ? 'declaración' : 'declaraciones'}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3">
+                    {consumptions.map((consumption, index) => {
+                      const component = recipe?.Components?.find(c => c.SapCode === consumption.ComponentSapCode)
+                      const unit = component?.MeasurementUnitRQ || component?.MeasurementUnitCQ || 'KG'
+                      
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-mono text-sm font-semibold text-blue-400">
+                                    {consumption.ComponentSapCode || '-'}
+                                  </span>
+                                  {component?.Description && (
+                                    <span className="text-xs text-gray-400 truncate">
+                                      {component.Description}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-4 text-xs text-gray-400">
+                                  <span>
+                                    <span className="text-gray-500">Dosificador:</span>{' '}
+                                    <span className="text-white font-mono">{consumption.DosingUnit || '-'}</span>
+                                  </span>
+                                  <span>
+                                    <span className="text-gray-500">Hopper:</span>{' '}
+                                    <span className="text-white font-mono">{consumption.DosingHopper || '-'}</span>
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {consumption.CommittedQuantity && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-sm text-gray-400">Cantidad:</span>
+                                <span className="text-lg font-bold text-green-400">
+                                  {parseFloat(consumption.CommittedQuantity).toFixed(3)} {unit}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-4">
+                            <button
+                              onClick={() => {
+                                setEditingConsumption(consumption)
+                                setShowEditModal(true)
+                              }}
+                              disabled={addingConsumption}
+                              className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors"
+                              title="Editar declaración"
+                            >
+                              <Edit className="w-4 h-4 text-white" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteConsumption(consumption)}
+                              disabled={addingConsumption}
+                              className="p-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors"
+                              title="Eliminar declaración"
+                            >
+                              <Trash2 className="w-4 h-4 text-white" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {consumptions.length === 0 && (
+                    <div className="text-center py-8 text-gray-400">
+                      <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>No hay declaraciones registradas</p>
+                    </div>
+                  )}
                 </div>
               </Card>
             )}
           </>
         )}
 
-        {/* Assign Component Modal */}
-        {showAssignModal && selectedLine && selectedDoser && (
-          <AssignComponentModal
-            selectedLine={selectedLine}
-            selectedDoser={selectedDoser}
-            selectedHopper={selectedHopper}
-            doserConsumptions={doserConsumptions}
-            assigningComponent={assigningComponent}
+        {/* Edit Consumption Modal */}
+        {showEditModal && editingConsumption && (
+          <EditConsumptionModal
+            consumption={editingConsumption}
+            selectedOrder={selectedOrder}
             onClose={() => {
-              setShowAssignModal(false)
-              setSelectedDoser(null)
-              setSelectedHopper(null)
-              setTempHopper(null)
+              setShowEditModal(false)
+              setEditingConsumption(null)
+              clearError()
             }}
-            onAssignComponent={handleAssignComponent}
+            onSubmit={handleEditConsumption}
+            isSubmitting={addingConsumption}
           />
         )}
 
-        {/* Add Consumption Modal */}
-        {showAddModal && (
-          <AddConsumptionModal
-            selectedOrder={selectedOrder}
-            onClose={() => {
-              setShowAddModal(false)
-              setNewConsumption({
-                DosingUnit: '',
-                DosingHopper: '',
-                ComponentSapCode: ''
-              })
-              clearError()
-            }}
-            onSubmit={handleAddConsumption}
-            isSubmitting={addingConsumption}
-          />
+        {/* Dosifier Manager Modal */}
+        <DosifierManagerModal
+          isOpen={showDosifierModal}
+          onClose={() => setShowDosifierModal(false)}
+          dosifiers={dosifiers}
+          onAdd={handleAddDosifier}
+          onEdit={handleEditDosifier}
+          onDelete={handleDeleteDosifier}
+          isSubmitting={managingCRUD}
+        />
+
+        {/* Hopper Manager Modal */}
+        <HopperManagerModal
+          isOpen={showHopperModal}
+          onClose={() => setShowHopperModal(false)}
+          hoppers={hoppers}
+          dosifiers={dosifiers}
+          onAdd={handleAddHopper}
+          onEdit={handleEditHopper}
+          onDelete={handleDeleteHopper}
+          isSubmitting={managingCRUD}
+        />
+
+        {/* Component Manager Modal */}
+        <ComponentManagerModal
+          isOpen={showComponentModal}
+          onClose={() => setShowComponentModal(false)}
+          components={components}
+          onAdd={handleAddComponent}
+          onEdit={handleEditComponent}
+          onDelete={handleDeleteComponent}
+          isSubmitting={managingCRUD}
+        />
+
+        {/* Modal para editar Inicio OF */}
+        {showStartModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <PlayCircle className="w-5 h-5 text-green-500" />
+                    Inicio de OF
+                  </h3>
+                  <button
+                    onClick={() => setShowStartModal(false)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Fecha y Hora de Inicio
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={tempStartDateTime}
+                    onChange={(e) => setTempStartDateTime(e.target.value)}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setShowStartModal(false)}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveStartDateTime}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Modal para editar Fin OF */}
+        {showEndModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Square className="w-5 h-5 text-red-500" />
+                    Fin de OF
+                  </h3>
+                  <button
+                    onClick={() => setShowEndModal(false)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Fecha y Hora de Fin
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={tempEndDateTime}
+                    onChange={(e) => setTempEndDateTime(e.target.value)}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setShowEndModal(false)}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveEndDateTime}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white transition-colors"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            </Card>
+          </div>
         )}
       </div>
     </div>

@@ -2,6 +2,7 @@ package sSap
 
 import (
 	"log"
+	"time"
 
 	"github.com/remrafvil/Auriga_API/internal/repositories/riInfluxdb"
 )
@@ -151,20 +152,30 @@ func (s *service) DosingConsumptionUpdate(factory string, prodline string, dosin
 	return data, nil
 }
 
-func (s *service) DosingConsumptionCalculate(factory string, prodline string, sapOrderCode string) ([]msDosingComponent, error) {
+func (s *service) DosingConsumptionCalculate(factory string, prodline string, sapOrderCode string, startDate *time.Time, endDate *time.Time) ([]msDosingComponent, error) {
 	var data = []msDosingComponent{}
 	var compInflux = []riInfluxdb.MriDosingComponent{}
-	//var starteddAt, finishedAt time.Time
-	// Obtenemos el activo por la linea de la fabrica
+	var startedAt, finishedAt time.Time
+	var err error
 
-	startedAt, finishedAt, err := s.repositoryOrd.LineOrdersFindStartFinish(factory, prodline, sapOrderCode)
-	if err != nil {
-
-		log.Println("Error actualizacion Service LineOrdersFindStartFinish:", err)
-		return data, err
+	// Si se proporcionan fechas en los headers, usarlas; si no, obtenerlas desde la BD
+	if startDate != nil && endDate != nil {
+		startedAt = *startDate
+		finishedAt = *endDate
+		log.Println("✅ Usando fechas proporcionadas en headers:")
+		log.Println("startedAt:", startedAt)
+		log.Println("finishedAt:", finishedAt)
+	} else {
+		// Obtener fechas desde la BD como antes
+		startedAt, finishedAt, err = s.repositoryOrd.LineOrdersFindStartFinish(factory, prodline, sapOrderCode)
+		if err != nil {
+			log.Println("Error actualizacion Service LineOrdersFindStartFinish:", err)
+			return data, err
+		}
+		log.Println("✅ Usando fechas desde BD:")
+		log.Println("starteddAt:", startedAt)
+		log.Println("finishedAt:", finishedAt)
 	}
-	log.Println("starteddAt  KKKKKKKKKKKKKK:", startedAt)
-	log.Println("finishedAt  KKKKKKKKKKKKKK:", finishedAt)
 
 	consumptions, err := s.repositoryOrd.ConsumptionByOrder(sapOrderCode, factory, prodline)
 	if err != nil {

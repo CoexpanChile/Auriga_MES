@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -134,13 +135,65 @@ func (h *handler) OrderConsumptionCalculate(c echo.Context) error {
 	u.ProdLine = c.Request().Header.Get("ProdLine")
 	u.SapCode = c.Request().Header.Get("SapCode")
 	u.SapOrderCode = c.Request().Header.Get("SapOrderCode")
+	startDateStr := c.Request().Header.Get("StartDate")
+	endDateStr := c.Request().Header.Get("EndDate")
 
 	log.Println("Factory", u.Factory)
 	log.Println("ProdLine", u.ProdLine)
 	log.Println("SapCode", u.SapCode)
 	log.Println("SapOrderCode", u.SapOrderCode)
+	log.Println("StartDate", startDateStr)
+	log.Println("EndDate", endDateStr)
 
-	use, err := h.service.DosingConsumptionCalculate(u.Factory, u.ProdLine, u.SapOrderCode)
+	var startDate, endDate *time.Time
+	if startDateStr != "" {
+		// Intentar parsear con diferentes formatos (el formato ISO puede incluir milisegundos)
+		var parsed time.Time
+		var err error
+
+		// Formato con milisegundos: 2006-01-02T15:04:05.000Z
+		parsed, err = time.Parse("2006-01-02T15:04:05.000Z", startDateStr)
+		if err != nil {
+			// Si falla, intentar con RFC3339Nano (acepta nanosegundos)
+			parsed, err = time.Parse(time.RFC3339Nano, startDateStr)
+		}
+		if err != nil {
+			// Si aún falla, intentar con RFC3339 (sin milisegundos)
+			parsed, err = time.Parse(time.RFC3339, startDateStr)
+		}
+
+		if err == nil {
+			startDate = &parsed
+			log.Println("StartDate parsed:", startDate)
+		} else {
+			log.Printf("Error parsing StartDate '%s': %v", startDateStr, err)
+		}
+	}
+	if endDateStr != "" {
+		// Intentar parsear con diferentes formatos (el formato ISO puede incluir milisegundos)
+		var parsed time.Time
+		var err error
+
+		// Formato con milisegundos: 2006-01-02T15:04:05.000Z
+		parsed, err = time.Parse("2006-01-02T15:04:05.000Z", endDateStr)
+		if err != nil {
+			// Si falla, intentar con RFC3339Nano (acepta nanosegundos)
+			parsed, err = time.Parse(time.RFC3339Nano, endDateStr)
+		}
+		if err != nil {
+			// Si aún falla, intentar con RFC3339 (sin milisegundos)
+			parsed, err = time.Parse(time.RFC3339, endDateStr)
+		}
+
+		if err == nil {
+			endDate = &parsed
+			log.Println("EndDate parsed:", endDate)
+		} else {
+			log.Printf("Error parsing EndDate '%s': %v", endDateStr, err)
+		}
+	}
+
+	use, err := h.service.DosingConsumptionCalculate(u.Factory, u.ProdLine, u.SapOrderCode, startDate, endDate)
 	if err != nil {
 		fmt.Println("registo no: %w", err)
 		return c.JSON(http.StatusInternalServerError, responseMessage{Message: "Registro no actualizado"})
