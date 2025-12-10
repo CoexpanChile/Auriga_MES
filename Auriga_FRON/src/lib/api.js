@@ -16,19 +16,38 @@ export const api = {
 
       // Si recibimos 401, intentar verificar autenticación y redirigir si es necesario
       if (response.status === 401) {
-        // Verificar si hay una sesión activa
-        const authCheck = await fetch(`${API_BASE_URL}/api/auth/check`, {
-          credentials: 'include'
-        })
-        
-        if (!authCheck.ok) {
-          // Si la verificación falla, redirigir a login
-          console.warn('Sesión expirada, redirigiendo a login...')
-          window.location.href = '/login'
+        // Evitar múltiples redirecciones
+        if (window._redirectingToLogin) {
           throw new Error('Unauthorized - Sesión expirada')
         }
         
-        // Si la verificación es exitosa pero aún recibimos 401, lanzar error
+        window._redirectingToLogin = true
+        
+        // Verificar si hay una sesión activa
+        try {
+          const authCheck = await fetch(`${API_BASE_URL}/api/auth/check`, {
+            credentials: 'include'
+          })
+          
+          if (!authCheck.ok) {
+            // Si la verificación falla, redirigir a login
+            console.warn('🔐 Sesión expirada, redirigiendo a login...')
+            setTimeout(() => {
+              window.location.href = '/login'
+            }, 500)
+            throw new Error('Unauthorized - Sesión expirada')
+          }
+        } catch (authError) {
+          // Si falla la verificación, redirigir a login
+          console.warn('🔐 Error verificando autenticación, redirigiendo a login...')
+          setTimeout(() => {
+            window.location.href = '/login'
+          }, 500)
+          throw new Error('Unauthorized - Sesión expirada')
+        }
+        
+        // Si la verificación es exitosa pero aún recibimos 401, puede ser un problema de permisos
+        console.warn('⚠️ Sesión válida pero recibiendo 401 - puede ser un problema de permisos')
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -92,13 +111,30 @@ export const api = {
 
       // Si recibimos 401, verificar autenticación y redirigir si es necesario
       if (response.status === 401) {
-        const authCheck = await fetch(`${API_BASE_URL}/api/auth/check`, {
-          credentials: 'include'
-        })
+        // Evitar múltiples redirecciones
+        if (window._redirectingToLogin) {
+          throw new Error('Unauthorized - Sesión expirada')
+        }
         
-        if (!authCheck.ok) {
-          console.warn('Sesión expirada, redirigiendo a login...')
-          window.location.href = '/login'
+        window._redirectingToLogin = true
+        
+        try {
+          const authCheck = await fetch(`${API_BASE_URL}/api/auth/check`, {
+            credentials: 'include'
+          })
+          
+          if (!authCheck.ok) {
+            console.warn('🔐 Sesión expirada, redirigiendo a login...')
+            setTimeout(() => {
+              window.location.href = '/login'
+            }, 500)
+            throw new Error('Unauthorized - Sesión expirada')
+          }
+        } catch (authError) {
+          console.warn('🔐 Error verificando autenticación, redirigiendo a login...')
+          setTimeout(() => {
+            window.location.href = '/login'
+          }, 500)
           throw new Error('Unauthorized - Sesión expirada')
         }
         

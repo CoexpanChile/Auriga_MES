@@ -4,7 +4,6 @@ import { Package, Factory, Calendar, RefreshCw, Loader2, ChevronRight, Home, Clo
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { useLanguage } from '../../context/LanguageContext'
-import { useProductionLines, useLinesWithData, useSyncAllLines } from '../../hooks/useProductionData'
 import { useLineOrders } from '../../hooks/useProductionData'
 import { api } from '../../lib/api'
 
@@ -26,37 +25,40 @@ function OrdenesFabricacion() {
   // Manejar errores de extensiones del navegador
   useEffect(() => {
     const handleUnhandledRejection = (event) => {
-      // Filtrar errores comunes de extensiones del navegador
-      if (event.reason && typeof event.reason === 'object' && event.reason.message) {
-        const message = event.reason.message
-        if (
-          message.includes('A listener indicated an asynchronous response') ||
-          message.includes('message channel closed') ||
-          message.includes('Extension context invalidated') ||
-          message.includes('Receiving end does not exist')
-        ) {
-          // Silenciar estos errores específicos de extensiones
-          event.preventDefault()
-          return
+      // Obtener el mensaje de error de diferentes formas
+      let errorMessage = ''
+      
+      if (event.reason) {
+        if (typeof event.reason === 'object' && event.reason.message) {
+          errorMessage = event.reason.message
+        } else if (typeof event.reason === 'string') {
+          errorMessage = event.reason
+        } else {
+          errorMessage = String(event.reason)
         }
       }
       
-      // También verificar si es un string
-      const errorMessage = event.reason?.message || String(event.reason || '')
+      // Filtrar errores comunes de extensiones del navegador
       if (
         errorMessage.includes('A listener indicated an asynchronous response') ||
         errorMessage.includes('message channel closed') ||
-        errorMessage.includes('Extension context invalidated')
+        errorMessage.includes('message channel closed before a response was received') ||
+        errorMessage.includes('Extension context invalidated') ||
+        errorMessage.includes('Receiving end does not exist') ||
+        errorMessage.includes('asynchronous response')
       ) {
+        // Silenciar estos errores específicos de extensiones
         event.preventDefault()
-        return
+        event.stopPropagation()
+        return false
       }
     }
 
-    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+    // Registrar el listener con capture phase para interceptar antes
+    window.addEventListener('unhandledrejection', handleUnhandledRejection, true)
     
     return () => {
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection, true)
     }
   }, [])
   
@@ -80,75 +82,292 @@ function OrdenesFabricacion() {
     }
   }, [selectedFactory])
   
-  // React Query hooks
-  const { data: lines = [], isLoading: loadingLines, error: linesError } = useProductionLines(selectedFactory)
-  const linesWithDataQueries = useLinesWithData(lines)
-  const syncAllLines = useSyncAllLines()
+  // Estados para líneas (similar a MaterialesConsumos)
+  const [lines, setLines] = useState([])
+  const [linesWithData, setLinesWithData] = useState([])
+  const [loadingLines, setLoadingLines] = useState(true)
+  const [linesError, setLinesError] = useState(null)
+  const [loadingLineData, setLoadingLineData] = useState(false)
   
   
+  // Helper para normalizar la fábrica de una línea (igual que MaterialesConsumos)
+  const getFactoryFromLine = (line) => {
+    if (line?.factory) {
+      return line.factory
+    }
+    if (line?.hierarchical_level?.[0]) {
+      return line.hierarchical_level[0]
+    }
+    return ''
+  }
+
+  // Función loadLines (igual que MaterialesConsumos)
+  const loadLines = async () => {
+    try {
+      setLoadingLines(true)
+      setLinesError(null)
+      console.log('🔄 Cargando líneas - OrdenesFabricacion')
+      console.log('📍 Factory seleccionada:', selectedFactory)
+      
+      // Usar /asset/list directamente (igual que MaterialesConsumos)
+      const assets = await api.get('/asset/list')
+      
+      console.log('📦 Assets recibidos de la API:', assets?.length || 0)
+      
+      // Encontrar el ID de la fábrica seleccionada si existe
+      let selectedFactoryId = null
+      if (selectedFactory) {
+        const factoryAsset = (assets || []).find(a => 
+          (a.Code === selectedFactory || a.code === selectedFactory) && 
+          (a.ParentID === null || a.parentID === null)
+        )
+        if (factoryAsset) {
+          selectedFactoryId = factoryAsset.ID || factoryAsset.id
+          console.log('🏭 Fábrica seleccionada encontrada:', {
+            code: factoryAsset.Code || factoryAsset.code,
+            id: selectedFactoryId
+          })
+        }
+      }
+      
+      // Filtrar solo líneas de producción (igual que MaterialesConsumos)
+      let linesData = (assets || []).filter(asset => {
+        const code = asset.Code || asset.code || ''
+        const parentId = asset.ParentID || asset.parentID
+        const hierarchicalLevel = asset.hierarchical_level || asset.HierarchicalLevel
+        
+        // Verificar si es una línea por código
+        const isLineByCode = code && (
+          code.startsWith('Line_') || 
+          code.startsWith('L') ||
+          code.toLowerCase().includes('line') ||
+          code.match(/^Line_\d+/i) ||
+          code.match(/^L\d+/i)
+        )
+        
+        // Verificar si es una línea por hierarchical_level (nivel 2 = fábrica + línea)
+        const isLineByLevel = hierarchicalLevel && Array.isArray(hierarchicalLevel) && hierarchicalLevel.length === 2
+        
+        // Debe tener un ParentID (no es null, es decir, pertenece a una fábrica)
+        const hasParent = parentId !== null && parentId !== undefined
+        
+        const isLine = isLineByCode || isLineByLevel
+        
+        return isLine && hasParent
+      })
+      
+      console.log('🔍 Líneas encontradas después del filtro inicial:', linesData.length)
+      
+      // Filtrar por fábrica si se especifica
+      if (selectedFactoryId !== null) {
+        linesData = linesData.filter(line => {
+          const lineParentId = line.ParentID || line.parentID
+          return lineParentId === selectedFactoryId
+        })
+        console.log(`📊 Filtrado: ${linesData.length} líneas después del filtro por fábrica ${selectedFactory}`)
+      }
+      
+      // Si no hay líneas con el filtro estricto, intentar un filtro más permisivo
+      if (linesData.length === 0 && assets && assets.length > 0) {
+        console.warn('⚠️ No se encontraron líneas con el filtro estricto, intentando filtro más permisivo...')
+        
+        const fallbackLines = (assets || []).filter(asset => {
+          const parentId = asset.ParentID || asset.parentID
+          const hierarchicalLevel = asset.hierarchical_level || asset.HierarchicalLevel
+          const hasParent = parentId !== null && parentId !== undefined
+          const hasTwoLevels = hierarchicalLevel && Array.isArray(hierarchicalLevel) && hierarchicalLevel.length === 2
+          return hasParent && hasTwoLevels
+        })
+        
+        if (fallbackLines.length > 0) {
+          console.warn(`✅ Encontradas ${fallbackLines.length} líneas con filtro permisivo`)
+          linesData = fallbackLines
+        }
+      }
+      
+      // Mapear las líneas a un formato consistente
+      const mappedLines = linesData.map(line => {
+        const parentId = line.ParentID || line.parentID
+        const lineCode = line.Code || line.code || ''
+        
+        // Buscar el asset padre (fábrica) usando el ParentID
+        let factoryCode = selectedFactory || ''
+        if (parentId !== null && parentId !== undefined && assets) {
+          const parentAsset = assets.find(a => (a.ID || a.id) === parentId)
+          if (parentAsset) {
+            factoryCode = parentAsset.Code || parentAsset.code || selectedFactory || ''
+          }
+        }
+        
+        if (!factoryCode) {
+          factoryCode = selectedFactory || ''
+        }
+        
+        return {
+          ...line,
+          code: lineCode,
+          id: line.ID || line.id || `line-${lineCode}`,
+          parentId: parentId,
+          factory: factoryCode,
+          line: lineCode,
+          hierarchical_level: line.hierarchical_level || [factoryCode, lineCode]
+        }
+      })
+      
+      console.log('✅ Líneas cargadas:', mappedLines.length)
+      setLines(mappedLines)
+      setLinesError(null)
+    } catch (err) {
+      // Si es un error 401, no mostrar error crítico (ya se está redirigiendo al login)
+      if (err.message?.includes('Unauthorized') || err.status === 401) {
+        console.warn('🔐 Sesión expirada, se redirigirá al login')
+        setLinesError(null) // No mostrar error, solo esperar redirección
+        setLines([])
+      } else {
+        console.error('❌ Error loading lines:', err)
+        setLinesError(err)
+        setLines([])
+      }
+    } finally {
+      setLoadingLines(false)
+    }
+  }
+
+  // Función loadLinesWithData (igual que MaterialesConsumos)
+  const loadLinesWithData = async () => {
+    if (lines.length === 0) {
+      console.log('⚠️ No hay líneas para cargar datos')
+      setLinesWithData([])
+      setLoadingLineData(false)
+      return
+    }
+    
+    try {
+      setLoadingLineData(true)
+      const linesToLoad = lines.slice(0, 10) // Limitar a las primeras 10
+      console.log('🔄 Cargando datos completos para', linesToLoad.length, 'líneas')
+      
+      const linesData = await Promise.all(
+        linesToLoad.map(async (line) => {
+          try {
+            let factory = getFactoryFromLine(line)
+            if (!factory && selectedFactory) {
+              factory = selectedFactory
+            }
+            
+            const prodLine = line.line || line.code || ''
+            const sapCode = line.sap_code || line.code || line.line || ''
+            
+            if (!factory || !prodLine) {
+              return {
+                ...line,
+                orders: [],
+                activeOrder: null,
+                recipe: null
+              }
+            }
+            
+            // Cargar órdenes para esta línea
+            let ordersResponse
+            try {
+              ordersResponse = await api.post('/sap/orders', {}, {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Factory': factory,
+                  'ProdLine': prodLine,
+                  'SapCode': sapCode
+                }
+              })
+            } catch (corsError) {
+              try {
+                ordersResponse = await api.post('/sap/orders', {}, {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Factory': factory,
+                    'ProdLine': prodLine,
+                    'SapCode': sapCode,
+                    'SapRequest': 'false'
+                  }
+                })
+              } catch (retryError) {
+                throw corsError
+              }
+            }
+            
+            const ordersData = Array.isArray(ordersResponse) ? ordersResponse : []
+            console.log(`✅ Órdenes cargadas para ${prodLine}:`, ordersData.length)
+            
+            // Buscar orden activa
+            const activeOrder = ordersData.find(order => 
+              order.StarteddAt && !order.FinishedAt
+            ) || ordersData[0]
+            
+            return {
+              ...line,
+              orders: ordersData,
+              activeOrder: activeOrder,
+              recipe: null
+            }
+          } catch (err) {
+            console.error(`❌ Error cargando datos para línea:`, err)
+            return {
+              ...line,
+              orders: [],
+              activeOrder: null,
+              recipe: null,
+              error: err.message
+            }
+          }
+        })
+      )
+      
+      console.log('✅ Datos completos cargados:', linesData.length, 'líneas')
+      const validLines = linesData.filter(line => line.id || line.code)
+      setLinesWithData(validLines)
+    } catch (err) {
+      // Si es un error 401, no mostrar error crítico (ya se está redirigiendo al login)
+      if (err.message?.includes('Unauthorized') || err.status === 401) {
+        console.warn('🔐 Sesión expirada al cargar datos de líneas')
+      } else {
+        console.error('Error loading lines with data:', err)
+      }
+    } finally {
+      setLoadingLineData(false)
+    }
+  }
+
+  // Cargar líneas cuando cambia la fábrica
+  useEffect(() => {
+    loadLines()
+  }, [selectedFactory])
+
+  // Cargar datos de líneas cuando se cargan las líneas básicas
+  useEffect(() => {
+    if (lines.length > 0) {
+      loadLinesWithData()
+    }
+  }, [lines])
+
   // Debug: Log lines cuando cambian
   useEffect(() => {
-    const logData = {
+    console.log('🔍 Estado de líneas:', {
       linesLength: lines.length,
+      linesWithDataLength: linesWithData.length,
       loadingLines,
+      loadingLineData,
       linesError: linesError?.message,
-      selectedFactory,
-      lines: lines.slice(0, 3).map(l => ({
-        id: l.id,
-        code: l.code,
-        line: l.line,
-        factory: l.factory
-      }))
-    }
-    console.log('🔍 useProductionLines estado:', logData)
-    
-    if (lines.length > 0) {
-      console.log('✅ Líneas disponibles en OrdenesFabricacion:', lines.length, lines)
-    } else if (!loadingLines && !linesError) {
-      console.warn('⚠️ No hay líneas disponibles después de cargar. Factory:', selectedFactory)
-    }
-  }, [lines, loadingLines, linesError, selectedFactory])
+      selectedFactory
+    })
+  }, [lines, linesWithData, loadingLines, loadingLineData, linesError, selectedFactory])
   
-  // Obtener datos de líneas con órdenes
-  // useQueries retorna un array de objetos de query con { data, isLoading, error, ... }
-  const linesWithOrders = linesWithDataQueries.map((query, index) => {
-    const line = lines[index]
-    if (!line) {
-      console.warn(`⚠️ No hay línea en índice ${index}`)
-      return null
-    }
-    const lineData = {
-      line: line,
-      orders: query.data?.orders || [],
-      activeOrder: query.data?.activeOrder || null,
-      isLoading: query.isLoading,
-      error: query.error
-    }
-    
-    // Debug: Log cuando se cargan órdenes para una línea
-    if (lineData.orders.length > 0 && !query.isLoading) {
-      console.log(`✅ Órdenes cargadas para línea ${line.code}:`, {
-        ordersCount: lineData.orders.length,
-        activeOrder: lineData.activeOrder?.OrderNumber || 'N/A'
-      })
-    }
-    
-    return lineData
-  }).filter(Boolean) // Filtrar nulls
-  
-  // Debug: Log del estado de las queries
-  useEffect(() => {
-    if (lines.length > 0) {
-      console.log('🔍 Estado de useLinesWithData:', {
-        linesCount: lines.length,
-        queriesCount: linesWithDataQueries.length,
-        queriesLoading: linesWithDataQueries.filter(q => q.isLoading).length,
-        queriesWithData: linesWithDataQueries.filter(q => q.data).length,
-        queriesWithError: linesWithDataQueries.filter(q => q.error).length,
-        linesWithOrdersCount: linesWithOrders.length
-      })
-    }
-  }, [lines, linesWithDataQueries, linesWithOrders])
+  // Usar linesWithData directamente (ya viene con órdenes cargadas)
+  const linesWithOrders = linesWithData.map(lineData => ({
+    line: lineData,
+    orders: lineData.orders || [],
+    activeOrder: lineData.activeOrder || null,
+    isLoading: loadingLineData,
+    error: lineData.error
+  }))
   
   // Hook para órdenes de la línea seleccionada
   const { data: orders = [], isLoading: loadingOrders, error: ordersError, refetch: refetchOrders } = useLineOrders(selectedLine, false)
@@ -175,8 +394,11 @@ function OrdenesFabricacion() {
     if (selectedLine) {
       await refetchOrders()
     } else {
-      // Sincronizar todas las líneas
-      await syncAllLines.mutateAsync(lines)
+      // Recargar líneas y sus datos
+      await loadLines()
+      if (lines.length > 0) {
+        await loadLinesWithData()
+      }
     }
   }
 
@@ -219,8 +441,8 @@ function OrdenesFabricacion() {
   }
 
   const getCurrentOrder = (line) => {
-    const lineData = linesWithOrders.find(item => item.line?.id === line.id || item.line?.code === line.code)
-    return lineData?.activeOrder || lineData?.orders?.[0] || null
+    // Ya viene en line.activeOrder desde loadLinesWithData
+    return line.activeOrder || line.orders?.[0] || null
   }
   
   const isGlobalView = !selectedFactory
@@ -228,14 +450,14 @@ function OrdenesFabricacion() {
   // Cargar estado de InfluxDB para las líneas
   useEffect(() => {
     const loadLinesStatus = async () => {
-      if (lines.length === 0 || loadingLines) return
+      if (linesWithData.length === 0 || loadingLineData) return
       
       try {
-        const lineCodes = lines.map(line => line.code).filter(code => code)
+        const lineCodes = linesWithData.map(line => line.code).filter(code => code)
         if (lineCodes.length === 0) return
         
         // Obtener la fábrica de la primera línea o usar selectedFactory
-        const factory = selectedFactory || lines[0]?.factory || ''
+        const factory = selectedFactory || linesWithData[0]?.factory || ''
         if (!factory) return
         
         console.log('🔄 Cargando estado de InfluxDB para líneas:', { factory, lineCodes })
@@ -279,7 +501,7 @@ function OrdenesFabricacion() {
         console.error('❌ Error al cargar estado de InfluxDB:', err)
         // Si falla, establecer todos como desconocidos
         const unknownStatus = {}
-        lines.forEach(line => {
+        linesWithData.forEach(line => {
           if (line.code) {
             unknownStatus[line.code] = {
               status: 'unknown',
@@ -292,18 +514,20 @@ function OrdenesFabricacion() {
     }
     
     loadLinesStatus()
-  }, [lines, loadingLines, selectedFactory])
+  }, [linesWithData, loadingLineData, selectedFactory])
   
   // Debug: Log del estado de carga
   useEffect(() => {
     console.log('🔍 Estado de carga:', {
       loadingLines,
+      loadingLineData,
       linesLength: lines.length,
+      linesWithDataLength: linesWithData.length,
       hasError: !!linesError,
       errorMessage: linesError?.message,
       linesStatusCount: Object.keys(linesStatus).length
     })
-  }, [loadingLines, lines.length, linesError, linesStatus])
+  }, [loadingLines, loadingLineData, lines.length, linesWithData.length, linesError, linesStatus])
   
   // No bloquear todo el renderizado si hay líneas, solo mostrar loading en la sección específica
   // if (loadingLines && lines.length === 0) {
@@ -371,7 +595,7 @@ function OrdenesFabricacion() {
                   )}
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-1">
-                  {loadingLines ? '...' : lines.length}
+                  {loadingLines ? '...' : linesWithData.length || lines.length}
                 </h3>
                 <p className="text-sm text-gray-400">Líneas de Producción</p>
               </div>
@@ -384,7 +608,7 @@ function OrdenesFabricacion() {
                   <CheckCircle2 className="w-8 h-8 text-green-400" />
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-1">
-                  {lines.filter(line => {
+                  {linesWithData.filter(line => {
                     const status = linesStatus[line.code]
                     return status?.status === 'operativa'
                   }).length}
@@ -400,7 +624,7 @@ function OrdenesFabricacion() {
                   <Package className="w-8 h-8 text-purple-400" />
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-1">
-                  {linesWithOrders.reduce((total, item) => total + (item.orders?.length || 0), 0)}
+                  {linesWithData.reduce((total, line) => total + (line.orders?.length || 0), 0)}
                 </h3>
                 <p className="text-sm text-gray-400">Total de Órdenes</p>
               </div>
@@ -413,7 +637,7 @@ function OrdenesFabricacion() {
                   <Clock className="w-8 h-8 text-orange-400" />
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-1">
-                  {linesWithOrders.filter(item => item.activeOrder).length}
+                  {linesWithData.filter(line => line.activeOrder).length}
                 </h3>
                 <p className="text-sm text-gray-400">Líneas con Orden Activa</p>
               </div>
@@ -488,19 +712,15 @@ function OrdenesFabricacion() {
               {(() => {
                 console.log('🔍 Estado de renderizado en UI:', {
                   loadingLines,
+                  loadingLineData,
                   linesError: linesError?.message,
                   linesLength: lines.length,
-                  selectedFactory,
-                  linesSample: lines.slice(0, 3).map(l => ({
-                    id: l.id,
-                    code: l.code,
-                    line: l.line,
-                    factory: l.factory
-                  }))
+                  linesWithDataLength: linesWithData.length,
+                  selectedFactory
                 })
                 return null
               })()}
-              {loadingLines ? (
+              {loadingLines || loadingLineData ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 text-blue-500 animate-spin mr-2" />
                   <p className="text-gray-400">Cargando líneas de producción...</p>
@@ -510,22 +730,26 @@ function OrdenesFabricacion() {
                   <AlertCircle className="w-6 h-6 text-red-500 mr-2" />
                   <p className="text-red-400">Error al cargar líneas: {linesError.message || 'Error desconocido'}</p>
                 </div>
-              ) : lines.length === 0 ? (
+              ) : linesWithData.length === 0 ? (
                 <div className="text-center py-8">
                   <Factory className="w-12 h-12 text-gray-600 mx-auto mb-2 opacity-50" />
                   <p className="text-gray-400">{t.common?.noData || 'No hay líneas disponibles'}</p>
                   {selectedFactory && (
                     <p className="text-sm text-gray-500 mt-2">Fábrica seleccionada: {selectedFactory}</p>
                   )}
+                  {lines.length > 0 && linesWithData.length === 0 && (
+                    <p className="text-sm text-yellow-400 mt-2">Líneas encontradas pero sin datos cargados</p>
+                  )}
                   <div className="mt-4 text-xs text-gray-600">
-                    <p>Debug: loadingLines={String(loadingLines)}, lines.length={lines.length}</p>
+                    <p>Debug: loadingLines={String(loadingLines)}, loadingLineData={String(loadingLineData)}</p>
+                    <p>lines.length={lines.length}, linesWithData.length={linesWithData.length}</p>
                     {linesError && <p className="text-red-400">Error: {linesError.message}</p>}
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {lines.map((line, index) => {
-                    const currentOrder = getCurrentOrder(line)
+                  {linesWithData.map((line, index) => {
+                    const currentOrder = line.activeOrder || line.orders?.[0] || null
                     const orderStatus = currentOrder ? getOrderStatus(currentOrder) : null
                     const orderProgress = currentOrder ? calculateProgress(
                       currentOrder.QuantityProduced, 
@@ -716,81 +940,196 @@ function OrdenesFabricacion() {
                 </div>
               </Card>
             ) : (
-              <div className="space-y-4">
-                {orders.map((order, index) => {
-                  const status = getOrderStatus(order)
-                  const progress = calculateProgress(order.QuantityProduced, order.QuantityToProduce)
-                  const StatusIcon = status.icon
-                  
-                  return (
-                    <Card key={index} className="overflow-hidden">
-                      <div className="p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-xl font-bold text-white">{order.OrderNumber}</h3>
-                              <Badge variant={status.color}>
-                                <StatusIcon className="w-3 h-3 mr-1" />
-                                {status.text}
-                              </Badge>
-                              {order.OrderNType && (
-                                <Badge variant="secondary">{order.OrderNType}</Badge>
+              <>
+                <div className="space-y-4 mb-6">
+                  {orders.map((order, index) => {
+                    const status = getOrderStatus(order)
+                    const progress = calculateProgress(order.QuantityProduced, order.QuantityToProduce)
+                    const StatusIcon = status.icon
+                    
+                    return (
+                      <Card key={index} className="overflow-hidden">
+                        <div className="p-6">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h3 className="text-xl font-bold text-white">{order.OrderNumber}</h3>
+                                <Badge variant={status.color}>
+                                  <StatusIcon className="w-3 h-3 mr-1" />
+                                  {status.text}
+                                </Badge>
+                                {order.OrderNType && (
+                                  <Badge variant="secondary">{order.OrderNType}</Badge>
+                                )}
+                              </div>
+                              <p className="text-lg text-gray-300 mb-1">{order.ProductName}</p>
+                              {order.ProductDescription && (
+                                <p className="text-sm text-gray-400">{order.ProductDescription}</p>
                               )}
                             </div>
-                            <p className="text-lg text-gray-300 mb-1">{order.ProductName}</p>
-                            {order.ProductDescription && (
-                              <p className="text-sm text-gray-400">{order.ProductDescription}</p>
-                            )}
                           </div>
-                        </div>
 
-                        <div className="mb-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm text-gray-400">Progreso de Producción</span>
-                            <span className="text-sm font-semibold text-white">{progress}%</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600 transition-all duration-500"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between mt-2 text-sm">
-                            <span className="text-gray-400">
-                              Producido: <span className="text-white font-medium">{order.QuantityProduced || '0'}</span> {order.MeasurementUnit || ''}
-                            </span>
-                            <span className="text-gray-400">
-                              Objetivo: <span className="text-white font-medium">{order.QuantityToProduce || '0'}</span> {order.MeasurementUnit || ''}
-                            </span>
-                            {order.QuantityRemainedToProduce && (
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-gray-400">Progreso de Producción</span>
+                              <span className="text-sm font-semibold text-white">{progress}%</span>
+                            </div>
+                            <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                              <div
+                                className="h-full bg-blue-600 transition-all duration-500"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between mt-2 text-sm">
                               <span className="text-gray-400">
-                                Restante: <span className="text-white font-medium">{order.QuantityRemainedToProduce}</span> {order.MeasurementUnit || ''}
+                                Producido: <span className="text-white font-medium">{order.QuantityProduced || '0'}</span> {order.MeasurementUnit || ''}
                               </span>
-                            )}
+                              <span className="text-gray-400">
+                                Objetivo: <span className="text-white font-medium">{order.QuantityToProduce || '0'}</span> {order.MeasurementUnit || ''}
+                              </span>
+                              {order.QuantityRemainedToProduce && (
+                                <span className="text-gray-400">
+                                  Restante: <span className="text-white font-medium">{order.QuantityRemainedToProduce}</span> {order.MeasurementUnit || ''}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-700">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Clock className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-400">Inicio Programado</span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-700">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <Clock className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm text-gray-400">Inicio Programado</span>
+                              </div>
+                              <p className="text-white font-medium">{formatDate(order.StarteddAt)}</p>
                             </div>
-                            <p className="text-white font-medium">{formatDate(order.StarteddAt)}</p>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Clock className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-400">Fin Programado</span>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <Clock className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm text-gray-400">Fin Programado</span>
+                              </div>
+                              <p className="text-white font-medium">{formatDate(order.FinishedAt)}</p>
                             </div>
-                            <p className="text-white font-medium">{formatDate(order.FinishedAt)}</p>
                           </div>
                         </div>
+                      </Card>
+                    )
+                  })}
+                </div>
+
+                {/* Historial de últimas 10 órdenes */}
+                {orders.length > 0 && (
+                  <Card className="mb-6">
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                          <Calendar className="w-5 h-5 text-blue-400" />
+                          Historial de Órdenes de Fabricación
+                        </h3>
+                        <Badge variant="secondary">
+                          Últimas {Math.min(10, orders.length)} órdenes
+                        </Badge>
                       </div>
-                    </Card>
-                  )
-                })}
-              </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-gray-700">
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Orden</th>
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Producto</th>
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Estado</th>
+                              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-400">Progreso</th>
+                              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-400">Producido</th>
+                              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-400">Objetivo</th>
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Inicio</th>
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Fin</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orders
+                              .sort((a, b) => {
+                                // Ordenar por fecha de inicio (más recientes primero)
+                                const dateA = a.StarteddAt ? new Date(a.StarteddAt) : new Date(0)
+                                const dateB = b.StarteddAt ? new Date(b.StarteddAt) : new Date(0)
+                                return dateB - dateA
+                              })
+                              .slice(0, 10)
+                              .map((order, index) => {
+                                const status = getOrderStatus(order)
+                                const progress = calculateProgress(order.QuantityProduced, order.QuantityToProduce)
+                                const StatusIcon = status.icon
+                                
+                                return (
+                                  <tr 
+                                    key={order.OrderNumber || index} 
+                                    className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
+                                  >
+                                    <td className="py-3 px-4">
+                                      <span className="font-semibold text-white">{order.OrderNumber}</span>
+                                      {order.OrderNType && (
+                                        <Badge variant="secondary" className="ml-2 text-xs">
+                                          {order.OrderNType}
+                                        </Badge>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <div>
+                                        <p className="text-white text-sm font-medium">{order.ProductName || 'N/A'}</p>
+                                        {order.ProductDescription && (
+                                          <p className="text-gray-400 text-xs line-clamp-1">{order.ProductDescription}</p>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <Badge variant={status.color} className="text-xs">
+                                        <StatusIcon className="w-3 h-3 mr-1 inline" />
+                                        {status.text}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <span className="text-white text-sm font-medium">{progress}%</span>
+                                        <div className="w-16 bg-gray-700 rounded-full h-2 overflow-hidden">
+                                          <div
+                                            className="h-full bg-blue-600 transition-all"
+                                            style={{ width: `${progress}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <span className="text-white text-sm">
+                                        {order.QuantityProduced || '0'} {order.MeasurementUnit || ''}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <span className="text-gray-400 text-sm">
+                                        {order.QuantityToProduce || '0'} {order.MeasurementUnit || ''}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <span className="text-gray-400 text-sm">{formatDate(order.StarteddAt)}</span>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <span className="text-gray-400 text-sm">{formatDate(order.FinishedAt)}</span>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                      
+                      {orders.length === 0 && (
+                        <div className="text-center py-8">
+                          <Package className="w-12 h-12 text-gray-600 mx-auto mb-2 opacity-50" />
+                          <p className="text-gray-400">No hay órdenes en el historial</p>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                )}
+              </>
             )}
           </>
         )}

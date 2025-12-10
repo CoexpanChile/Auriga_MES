@@ -15,8 +15,10 @@ window.console.error = (...args) => {
   if (
     errorMessage.includes('message channel closed') ||
     errorMessage.includes('asynchronous response') ||
+    errorMessage.includes('A listener indicated an asynchronous response') ||
     errorMessage.includes('Extension context invalidated') ||
-    errorMessage.includes('Receiving end does not exist')
+    errorMessage.includes('Receiving end does not exist') ||
+    errorMessage.includes('message channel closed before a response was received')
   ) {
     // Ignorar estos errores silenciosamente
     return
@@ -26,7 +28,7 @@ window.console.error = (...args) => {
   originalError.apply(console, args)
 }
 
-// Manejar errores no capturados de promesas
+// Manejar errores no capturados de promesas (registrar ANTES de que React se cargue)
 window.addEventListener('unhandledrejection', (event) => {
   const errorMessage = event.reason?.message || String(event.reason || '')
   
@@ -34,14 +36,17 @@ window.addEventListener('unhandledrejection', (event) => {
   if (
     errorMessage.includes('message channel closed') ||
     errorMessage.includes('asynchronous response') ||
+    errorMessage.includes('A listener indicated an asynchronous response') ||
     errorMessage.includes('Extension context invalidated') ||
-    errorMessage.includes('Receiving end does not exist')
+    errorMessage.includes('Receiving end does not exist') ||
+    errorMessage.includes('message channel closed before a response was received')
   ) {
     // Prevenir que el error se muestre en la consola
     event.preventDefault()
-    return
+    event.stopPropagation()
+    return false
   }
-})
+}, true) // Usar capture phase para interceptar antes
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

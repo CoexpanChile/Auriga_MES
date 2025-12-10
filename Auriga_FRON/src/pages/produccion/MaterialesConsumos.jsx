@@ -52,6 +52,7 @@ function MaterialsConsumablesPage() {
       if (event.reason && typeof event.reason === 'object' && event.reason.message) {
         const message = event.reason.message
         if (
+          message.includes('A listener indicated an asynchronous response') ||
           message.includes('message channel closed') ||
           message.includes('Extension context invalidated') ||
           message.includes('Receiving end does not exist')
@@ -60,6 +61,17 @@ function MaterialsConsumablesPage() {
           event.preventDefault()
           return
         }
+      }
+      
+      // También verificar si es un string directamente
+      const errorMessage = event.reason?.message || String(event.reason || '')
+      if (
+        errorMessage.includes('A listener indicated an asynchronous response') ||
+        errorMessage.includes('message channel closed') ||
+        errorMessage.includes('Extension context invalidated')
+      ) {
+        event.preventDefault()
+        return
       }
     }
 
