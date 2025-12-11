@@ -56,17 +56,18 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 	}
 
 	// Obtener factory sap_code desde mr_assets
+	// Buscar asset de factory (hierarchical_level[1] = factory, hierarchical_level[2] IS NULL)
 	factoryAsset, err := s.repositoryAss.AssetByFactLine(factory, "")
-	if err != nil {
-		log.Printf("Error obteniendo factory asset para %s: %v", factory, err)
+	if err != nil || factoryAsset.SapCode == "" {
+		log.Printf("Error obteniendo factory asset para %s: %v, usando factory como sap_code", factory, err)
 		// Si no se encuentra, usar el factory como sap_code (fallback)
 		factoryAsset.SapCode = factory
 	}
 
 	// Obtener línea sap_code desde mr_assets
 	lineAsset, err := s.repositoryAss.AssetByFactLine(factory, prodline)
-	if err != nil {
-		log.Printf("Error obteniendo línea asset para %s/%s: %v", factory, prodline, err)
+	if err != nil || lineAsset.SapCode == "" {
+		log.Printf("Error obteniendo línea asset para %s/%s: %v, usando prodline como sap_code", factory, prodline, err)
 		// Si no se encuentra, usar prodline como sap_code (fallback)
 		lineAsset.SapCode = prodline
 	}
