@@ -158,11 +158,8 @@ function MaterialsConsumablesPage() {
   const [declarationForm, setDeclarationForm] = useState({
     componentSapCode: '',
     dosifierId: '',
-    hopperId: '',
-    quantity: ''
+    hopperId: ''
   })
-  // Almacenar cantidades declaradas localmente (solo informativo, no se envía al backend)
-  const [declaredQuantities, setDeclaredQuantities] = useState({}) // { componentSapCode: totalQuantity } - Limpiado: no se usa para mostrar, siempre muestra 0
   
   // Estados para Inicio y Fin de OF
   const [ofStartDateTime, setOfStartDateTime] = useState(null) // Formato: Date object
@@ -841,24 +838,6 @@ function MaterialsConsumablesPage() {
       await loadConsumptions()
       await loadRecipe(true)
       
-      // Actualizar cantidad declarada localmente
-      const componentCode = consumption.ComponentSapCode
-      if (componentCode && consumption.CommittedQuantity) {
-        setDeclaredQuantities(prev => {
-          const currentTotal = prev[componentCode] || 0
-          const quantityToRemove = parseFloat(consumption.CommittedQuantity) || 0
-          const newTotal = Math.max(0, currentTotal - quantityToRemove)
-          if (newTotal <= 0) {
-            const newState = { ...prev }
-            delete newState[componentCode]
-            return newState
-          }
-          return {
-            ...prev,
-            [componentCode]: newTotal
-          }
-        })
-      }
       
       showSuccess('Declaración eliminada exitosamente')
     } catch (err) {
@@ -1107,15 +1086,8 @@ function MaterialsConsumablesPage() {
     }
 
     // Validar campos requeridos
-    if (!declarationForm.componentSapCode.trim() || !declarationForm.dosifierId.trim() || !declarationForm.hopperId.trim() || !declarationForm.quantity.trim()) {
+    if (!declarationForm.componentSapCode.trim() || !declarationForm.dosifierId.trim() || !declarationForm.hopperId.trim()) {
       showError('Por favor, completa todos los campos requeridos')
-      return
-    }
-
-    // Validar que la cantidad sea un número positivo
-    const quantity = parseFloat(declarationForm.quantity)
-    if (isNaN(quantity) || quantity <= 0) {
-      showError('La cantidad debe ser un número positivo')
       return
     }
 
@@ -1265,37 +1237,11 @@ function MaterialsConsumablesPage() {
         component: declarationForm.componentSapCode,
         dosifier: selectedDosifier.name,
         hopper: selectedHopper.name,
-        quantityRequested: quantity,
         headers: headers,
         url: `${import.meta.env.VITE_API_URL || 'http://18.213.58.26:8081'}/sap/orderConsump/add`
       })
       
-      // Almacenar la cantidad declarada localmente ANTES de la llamada API (solo informativo, no se envía al backend)
-      // Esto asegura que se actualice inmediatamente en la UI
       const componentCode = declarationForm.componentSapCode.trim()
-      if (quantity > 0) {
-        // Actualizar el estado de forma síncrona para que se refleje inmediatamente
-        setDeclaredQuantities(prev => {
-          const currentTotal = prev[componentCode] || 0
-          const newTotal = currentTotal + parseFloat(quantity)
-          const newState = {
-            ...prev,
-            [componentCode]: newTotal
-          }
-          debug.log('📝 Actualizando cantidad declarada localmente:', {
-            component: componentCode,
-            quantityAgregada: parseFloat(quantity),
-            totalAnterior: currentTotal,
-            totalNuevo: newTotal,
-            estadoAnterior: prev,
-            nuevoEstado: newState
-          })
-          return newState
-        })
-        
-        // La cantidad ya se guardó localmente, se mostrará en la tabla inmediatamente
-        debug.log(`✅ Cantidad ${quantity} guardada localmente para ${componentCode}`)
-      }
       
       // Llamar a la API del backend para declarar el consumo
       try {
@@ -1330,31 +1276,23 @@ function MaterialsConsumablesPage() {
         await loadConsumptions()
         await loadRecipe(true)
         
-        showSuccess(`Consumo declarado exitosamente${quantity > 0 ? ` con cantidad ${quantity}` : ''}`)
+        showSuccess('Consumo declarado exitosamente')
       } catch (backendErr) {
-        // Si el backend falla, la cantidad ya se guardó localmente
         debug.error('❌ Error al llamar a la API del backend:', {
           message: backendErr.message,
           status: backendErr.status,
           response: backendErr.response,
-          component: componentCode,
-          quantity: quantity
+          component: componentCode
         })
         
-        // Mostrar mensaje informativo (no error crítico) ya que la cantidad se guardó localmente
-        if (quantity > 0) {
-          showSuccess(`Cantidad ${quantity} guardada localmente para ${componentCode}${backendErr.message && backendErr.message.includes('Registro no insertado') ? ' (el backend no pudo procesar la declaración)' : ' (error al comunicarse con el backend)'}`)
-        } else {
-          showSuccess(`Consumo declarado localmente${backendErr.message && backendErr.message.includes('Registro no insertado') ? ' (el backend no pudo procesar la declaración)' : ' (error al comunicarse con el backend)'}`)
-        }
+        showError(backendErr.message && backendErr.message.includes('Registro no insertado') ? 'El backend no pudo procesar la declaración' : 'Error al comunicarse con el backend')
       }
 
-      // Limpiar formulario siempre (la cantidad ya se guardó localmente)
+      // Limpiar formulario
       setDeclarationForm({
         componentSapCode: '',
         dosifierId: '',
-        hopperId: '',
-        quantity: ''
+        hopperId: ''
       })
     } catch (err) {
       // Solo errores críticos que ocurran antes de guardar la cantidad localmente
@@ -2414,19 +2352,7 @@ function MaterialsConsumablesPage() {
                       </thead>
                       <tbody>
                         {recipe.Components.map((component, index) => {
-                          // Calcular cantidad declarada fuera del JSX para mejor debugging
                           const componentCode = (component.SapCode || '').trim()
-                          // Buscar la cantidad declarada localmente (buscar en diferentes formatos de clave)
-                          const declaredQuantityLocal = declaredQuantities[componentCode] || 
-                                                        declaredQuantities[componentCode.toUpperCase()] || 
-                                                        declaredQuantities[componentCode.toLowerCase()] || 
-                                                        (() => {
-                                                          // Buscar por coincidencia parcial si no hay coincidencia exacta
-                                                          const matchingKey = Object.keys(declaredQuantities).find(key => 
-                                                            key.trim().toUpperCase() === componentCode.toUpperCase()
-                                                          )
-                                                          return matchingKey ? declaredQuantities[matchingKey] : 0
-                                                        })()
                           
                           return (
                           <tr key={index} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
@@ -2731,51 +2657,12 @@ function MaterialsConsumablesPage() {
                         )}
                       </div>
 
-                      {/* Campo de Cantidad */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="block text-sm font-medium text-gray-300">
-                            Cantidad a Declarar <span className="text-red-400">*</span>
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            step="0.001"
-                            min="0"
-                            value={declarationForm.quantity}
-                            onChange={(e) => setDeclarationForm(prev => ({ ...prev, quantity: e.target.value }))}
-                            placeholder="Ingresa la cantidad"
-                            className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
-                          {declarationForm.componentSapCode && (() => {
-                            const selectedComponent = recipe?.Components?.find(c => c.SapCode === declarationForm.componentSapCode)
-                            const unit = selectedComponent?.MeasurementUnitRQ || selectedComponent?.MeasurementUnitCQ || 'KG'
-                            return (
-                              <span className="px-3 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm font-medium min-w-[60px] text-center">
-                                {unit}
-                              </span>
-                            )
-                          })()}
-                        </div>
-                        {declarationForm.componentSapCode && (() => {
-                          const selectedComponent = recipe?.Components?.find(c => c.SapCode === declarationForm.componentSapCode)
-                          if (selectedComponent) {
-                            return (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Cantidad requerida: {selectedComponent.RequiredQuantity || '0'} {selectedComponent.MeasurementUnitRQ || ''}
-                              </p>
-                            )
-                          }
-                          return null
-                        })()}
-                      </div>
 
                       {/* Botón de Declarar */}
                       <div className="flex justify-end pt-4 border-t border-gray-700">
                         <button
                           onClick={handleDeclareConsumption}
-                          disabled={addingConsumption || !declarationForm.componentSapCode || !declarationForm.dosifierId || !declarationForm.hopperId || !declarationForm.quantity}
+                          disabled={addingConsumption || !declarationForm.componentSapCode || !declarationForm.dosifierId || !declarationForm.hopperId}
                           className="flex items-center gap-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors text-white font-medium"
                         >
                           {addingConsumption ? (
