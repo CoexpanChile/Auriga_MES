@@ -793,6 +793,13 @@ function MaterialsConsumablesPage() {
       setLastUpdate(new Date())
     } catch (err) {
       debug.error('Error loading consumptions:', err)
+      // Si el endpoint no existe (404) o no está implementado, usar array vacío
+      if (err.status === 404 || err.message?.includes('Not Found') || err.message?.includes('404')) {
+        debug.warn('⚠️ Endpoint /sap/orderConsump/list no disponible, usando array vacío')
+        setConsumptions([])
+        setLastUpdate(new Date())
+        return
+      }
       if (err.response?.status === 403) {
         showError('No tienes permisos para acceder a los consumos')
       } else {

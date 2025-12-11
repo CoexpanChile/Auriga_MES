@@ -1,16 +1,40 @@
 // Cliente API base para todas las peticiones
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://18.213.58.26:8081';
+// Usar ruta relativa para que pase por el proxy de Vite (configurado en vite.config.js)
+// El proxy redirige /api/* a http://localhost:8081
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+// Helper para obtener el token de autenticación
+const getAuthToken = () => {
+  // Intentar obtener de cookie
+  const cookies = document.cookie.split(';');
+  for (let cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'auth_token' && value) {
+      return value;
+    }
+  }
+  return null;
+};
 
 export const api = {
   async get(endpoint, options = {}) {
     try {
+      // Obtener token de autenticación
+      const authToken = getAuthToken();
+      const headers = {
+        // No incluir Content-Type en GET requests (no tienen body)
+        ...options.headers,
+      };
+      
+      // Agregar header Authorization si hay token
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         method: 'GET',
-        headers: {
-          // No incluir Content-Type en GET requests (no tienen body)
-          ...options.headers,
-        },
+        headers: headers,
         credentials: 'include', // Incluir cookies
       });
 
@@ -98,13 +122,22 @@ export const api = {
 
   async post(endpoint, body, options = {}) {
     try {
+      // Obtener token de autenticación
+      const authToken = getAuthToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      };
+      
+      // Agregar header Authorization si hay token
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers: headers,
         credentials: 'include',
         body: JSON.stringify(body),
       });
@@ -155,13 +188,22 @@ export const api = {
 
   async put(endpoint, body, options = {}) {
     try {
+      // Obtener token de autenticación
+      const authToken = getAuthToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      };
+      
+      // Agregar header Authorization si hay token
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers: headers,
         credentials: 'include',
         body: JSON.stringify(body),
       });
@@ -180,13 +222,22 @@ export const api = {
 
   async delete(endpoint, options = {}) {
     try {
+      // Obtener token de autenticación
+      const authToken = getAuthToken();
+      const headers = {
+        // No incluir Content-Type en DELETE requests (no tienen body)
+        ...options.headers,
+      };
+      
+      // Agregar header Authorization si hay token
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         method: 'DELETE',
-        headers: {
-          // No incluir Content-Type en DELETE requests (no tienen body)
-          ...options.headers,
-        },
+        headers: headers,
         credentials: 'include',
       });
 

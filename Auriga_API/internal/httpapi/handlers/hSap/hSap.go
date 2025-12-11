@@ -44,12 +44,15 @@ func (h *handler) RegisterRoutes(e *echo.Echo, s *config.Settings) {
 	r := e.Group("/sap")
 	/*middlewares*/
 	//r.Use(middleware.JWTWithConfig(jwtconfig))
+	// Las rutas /sap NO requieren autenticación por ahora (comentado para desarrollo)
+	// r.Use(h.authMiddleware.CombinedMiddleware())
 
 	r.POST("/orders", h.LineOrders)
 	r.GET("/orders/startFinish", h.LineOrderStartFinish)
 	r.GET("/orders/update", h.LineOrderUpdate)
 	r.GET("/orderRecipe", h.OrderRecipe)
 
+	// Rutas de consumption de materiales
 	r.GET("/orderConsump/list", h.OrderConsumption)
 	r.GET("/orderConsump/add", h.OrderConsumptionAdd)
 	r.GET("/orderConsump/del", h.OrderConsumptionDel)

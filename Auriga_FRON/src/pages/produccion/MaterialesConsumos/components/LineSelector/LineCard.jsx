@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Factory, ChevronRight, Package } from 'lucide-react'
-import { Card } from '../../../../components/ui/Card'
-import { Badge } from '../../../../components/ui/Badge'
+import { Card } from '../../../../../components/ui/Card'
+import { Badge } from '../../../../../components/ui/Badge'
 
 /**
  * Componente optimizado para mostrar tarjeta de línea de producción
