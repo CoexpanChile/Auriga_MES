@@ -21,6 +21,7 @@ type Service interface {
 	DosingConsumptionDel(factory string, prodline string, dosingSystem string, dosingUnit string, dosingComponent string, sapOrderCode string, sapComponentCode string) ([]msDosingComponent, error)
 	DosingConsumptionUpdate(factory string, prodline string, dosingSystem string, dosingUnit string, dosingComponent string, sapOrderCode string, sapComponentCode string) ([]msDosingComponent, error)
 	DosingConsumptionCalculate(factory string, prodline string, sapOrderCode string, startDate *time.Time, endDate *time.Time) ([]msDosingComponent, error)
+	DosingConsumptionSendToSAP(factory string, prodline string, sapOrderCode string, startDate *time.Time, endDate *time.Time, workdayID string, turno string) error
 }
 
 type service struct {

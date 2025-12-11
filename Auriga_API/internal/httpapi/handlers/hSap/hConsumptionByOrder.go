@@ -9,6 +9,10 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+type responseMessage struct {
+	Message string `json:"message"`
+}
+
 type mhOrderConsumption struct {
 	Factory          string `json:"factory" 			form:"factory" 				query:"factory"`
 	ProdLine         string `json:"prodline" 			form:"prodline" 			query:"prodline"`
@@ -209,12 +213,53 @@ func (h *handler) OrderConsumptionSummaryToSAP(c echo.Context) error {
 	u.ProdLine = c.Request().Header.Get("ProdLine")
 	u.SapCode = c.Request().Header.Get("SapCode")
 	u.SapOrderCode = c.Request().Header.Get("SapOrderCode")
+	startDateStr := c.Request().Header.Get("StartDate")
+	endDateStr := c.Request().Header.Get("EndDate")
+	workdayID := c.Request().Header.Get("WorkdayID")
+	turno := c.Request().Header.Get("Turno")
 
 	log.Println("Factory", u.Factory)
 	log.Println("ProdLine", u.ProdLine)
 	log.Println("SapCode", u.SapCode)
 	log.Println("SapOrderCode", u.SapOrderCode)
+	log.Println("WorkdayID", workdayID)
+	log.Println("Turno", turno)
 
-	//log.Println("Estos son los datos:", use)
-	return c.JSON(http.StatusOK, u)
+	// Parsear fechas
+	var startDate, endDate *time.Time
+	if startDateStr != "" {
+		parsed, err := time.Parse(time.RFC3339, startDateStr)
+		if err != nil {
+			parsed, err = time.Parse("2006-01-02T15:04:05.000Z", startDateStr)
+		}
+		if err == nil {
+			startDate = &parsed
+		}
+	}
+	if endDateStr != "" {
+		parsed, err := time.Parse(time.RFC3339, endDateStr)
+		if err != nil {
+			parsed, err = time.Parse("2006-01-02T15:04:05.000Z", endDateStr)
+		}
+		if err == nil {
+			endDate = &parsed
+		}
+	}
+
+	// Valores por defecto
+	if workdayID == "" {
+		workdayID = "EE1010171" // Valor por defecto si no se proporciona
+	}
+	if turno == "" {
+		turno = "T1" // Valor por defecto si no se proporciona
+	}
+
+	// Llamar al servicio para enviar a SAP
+	err := h.service.DosingConsumptionSendToSAP(u.Factory, u.ProdLine, u.SapOrderCode, startDate, endDate, workdayID, turno)
+	if err != nil {
+		log.Printf("Error enviando consumos a SAP: %v", err)
+		return c.JSON(http.StatusInternalServerError, responseMessage{Message: fmt.Sprintf("Error al enviar consumos a SAP: %v", err)})
+	}
+
+	return c.JSON(http.StatusOK, responseMessage{Message: "Consumos enviados exitosamente a SAP"})
 }

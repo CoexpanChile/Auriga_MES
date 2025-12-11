@@ -145,6 +145,7 @@ function MaterialsConsumablesPage() {
   const [loading, setLoading] = useState(true)
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [loadingConsumptions, setLoadingConsumptions] = useState(false)
+  const [sendingToSAP, setSendingToSAP] = useState(false)
   const [loadingRecipe, setLoadingRecipe] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [addingConsumption, setAddingConsumption] = useState(false)
@@ -884,6 +885,71 @@ function MaterialsConsumablesPage() {
       showError(errorMessage)
     } finally {
       setLoadingConsumptions(false)
+    }
+  }
+
+  // Función para enviar consumos a SAP
+  const handleSendToSAP = async () => {
+    if (!selectedOrder || !selectedLine) {
+      showError('Selecciona una orden y línea primero')
+      return
+    }
+
+    if (!consumptions || consumptions.length === 0) {
+      showError('No hay consumos para enviar a SAP. Primero calcula los consumos.')
+      return
+    }
+
+    if (!ofStartDateTime || !ofEndDateTime) {
+      showError('Las fechas de Inicio OF y Fin OF deben estar configuradas antes de enviar a SAP')
+      return
+    }
+
+    try {
+      setSendingToSAP(true)
+      clearError()
+
+      const factory = selectedLine.factory || getFactoryFromLine(selectedLine)
+      const prodLine = selectedLine.line || selectedLine.code || ''
+
+      if (!factory || !prodLine) {
+        showError('Error: Faltan datos requeridos (factory o prodLine)')
+        return
+      }
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Factory': factory,
+        'ProdLine': prodLine,
+        'SapOrderCode': selectedOrder.OrderNumber.trim(),
+        'StartDate': new Date(ofStartDateTime).toISOString(),
+        'EndDate': new Date(ofEndDateTime).toISOString(),
+        'WorkdayID': '', // Se puede obtener del usuario actual si está disponible
+        'Turno': 'T1' // Valor por defecto, se puede hacer configurable
+      }
+
+      debug.log('📤 Enviando consumos a SAP:', {
+        factory,
+        prodLine,
+        orderNumber: selectedOrder.OrderNumber,
+        consumptionsCount: consumptions.length,
+        headers
+      })
+
+      const response = await api.get('/sap/orderConsump/CalcToSAP', {
+        headers: headers,
+      })
+
+      debug.log('✅ Respuesta de SAP:', response)
+
+      showSuccess(`Consumos enviados exitosamente a SAP: ${consumptions.length} declaraciones`)
+      setLastUpdate(new Date())
+    } catch (err) {
+      debug.error('Error sending to SAP:', err)
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Error al enviar consumos a SAP'
+      showError(errorMessage)
+    } finally {
+      setSendingToSAP(false)
     }
   }
 
@@ -2791,6 +2857,24 @@ function MaterialsConsumablesPage() {
                           <>
                             <Calculator className="w-4 h-4" />
                             <span>Calcular</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleSendToSAP}
+                        disabled={sendingToSAP || loadingConsumptions || !consumptions || consumptions.length === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors text-white text-sm font-medium"
+                        title="Enviar consumos a SAP y guardar en base de datos"
+                      >
+                        {sendingToSAP ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Enviando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Package className="w-4 h-4" />
+                            <span>Enviar a SAP</span>
                           </>
                         )}
                       </button>
