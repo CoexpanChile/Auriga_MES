@@ -833,10 +833,26 @@ function MaterialsConsumablesPage() {
         'SapOrderCode': selectedOrder.OrderNumber.trim()
       }
       
+      // Si hay fechas de inicio y fin de OF, enviarlas en los headers
+      if (ofStartDateTime && ofEndDateTime) {
+        const startDateISO = new Date(ofStartDateTime).toISOString()
+        const endDateISO = new Date(ofEndDateTime).toISOString()
+        headers['StartDate'] = startDateISO
+        headers['EndDate'] = endDateISO
+        
+        debug.log('📅 Usando fechas de Inicio/Fin OF:', {
+          startDate: startDateISO,
+          endDate: endDateISO
+        })
+      } else {
+        debug.log('⚠️ No hay fechas de Inicio/Fin OF, el backend las obtendrá de la BD')
+      }
+      
       debug.log('🔄 Calculando consumos desde InfluxDB:', {
         factory,
         prodLine,
         orderNumber: selectedOrder.OrderNumber,
+        hasDates: !!(ofStartDateTime && ofEndDateTime),
         headers
       })
       
