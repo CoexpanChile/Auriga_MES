@@ -1,6 +1,7 @@
 package sSap
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -175,6 +176,23 @@ func (s *service) DosingConsumptionCalculate(factory string, prodline string, sa
 		log.Println("✅ Usando fechas desde BD:")
 		log.Println("starteddAt:", startedAt)
 		log.Println("finishedAt:", finishedAt)
+	}
+
+	// Validar que las fechas sean válidas (no sean fecha cero)
+	zeroTime := time.Time{}
+	if startedAt.Equal(zeroTime) || finishedAt.Equal(zeroTime) {
+		log.Println("❌ Error: Las fechas de inicio o fin son inválidas (fecha cero)")
+		log.Println("startedAt:", startedAt)
+		log.Println("finishedAt:", finishedAt)
+		return data, fmt.Errorf("las fechas de inicio y fin de la orden de fabricación no están configuradas. Por favor, configure las fechas de Inicio OF y Fin OF antes de calcular los consumos")
+	}
+
+	// Validar que la fecha de inicio sea anterior a la fecha de fin
+	if startedAt.After(finishedAt) || startedAt.Equal(finishedAt) {
+		log.Println("❌ Error: La fecha de inicio es posterior o igual a la fecha de fin")
+		log.Println("startedAt:", startedAt)
+		log.Println("finishedAt:", finishedAt)
+		return data, fmt.Errorf("la fecha de inicio debe ser anterior a la fecha de fin")
 	}
 
 	consumptions, err := s.repositoryOrd.ConsumptionByOrder(sapOrderCode, factory, prodline)
