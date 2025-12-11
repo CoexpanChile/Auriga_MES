@@ -9,14 +9,6 @@ import (
 	"github.com/remrafvil/Auriga_API/internal/repositories/rsSap"
 )
 
-type SAPSendResult struct {
-	ComponentSapCode string `json:"componentSapCode"`
-	DosingUnit       string `json:"dosingUnit"`
-	Success          bool   `json:"success"`
-	ErrorMessage     string `json:"errorMessage,omitempty"`
-	StatusCode       int    `json:"statusCode,omitempty"`
-}
-
 type Service interface {
 	LineOrderList(factory string, lineNumber string, lineSapCode string, sapRequest string) ([]msProductionOrder, error)
 	LineOrderStartFinish(factory string, lineNumber string, lineSapCode string, sapRequest string, orderNumber string, startFinish string) ([]msProductionOrder, error)
