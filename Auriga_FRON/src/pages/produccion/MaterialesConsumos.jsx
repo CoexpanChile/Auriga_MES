@@ -1671,13 +1671,18 @@ function MaterialsConsumablesPage() {
   // Formatear fecha/hora para declaraciones (formato: YYYY-MM-DD HH:mm:ss.SSS +TZ)
   const formatConsumptionDateTime = (date) => {
     // Manejar null, undefined, o string vacío
-    if (!date || date === 'null' || date === 'undefined' || date === '') {
+    if (!date || date === 'null' || date === 'undefined' || date === '' || (typeof date === 'string' && date.trim() === '')) {
       debug.warn('⚠️ formatConsumptionDateTime recibió fecha vacía/null/undefined:', date)
       return null // Retornar null para que el componente no muestre nada
     }
     
-    // Manejar diferentes formatos de fecha (string ISO, Date object, etc.)
-    const d = new Date(date)
+    // Si ya es un string en formato ISO (RFC3339), parsearlo
+    let d
+    if (typeof date === 'string') {
+      d = new Date(date)
+    } else {
+      d = new Date(date)
+    }
     
     // Verificar si la fecha es válida
     if (isNaN(d.getTime())) {
