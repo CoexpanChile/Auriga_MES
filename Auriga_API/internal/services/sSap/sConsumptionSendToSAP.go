@@ -56,7 +56,7 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 		startedAt, finishedAt, err = s.repositoryOrd.LineOrdersFindStartFinish(factory, prodline, sapOrderCode)
 		if err != nil {
 			log.Println("Error obteniendo fechas Service DosingConsumptionSendToSAP:", err)
-			return err
+			return results, err
 		}
 	}
 
