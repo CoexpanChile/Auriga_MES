@@ -1,6 +1,7 @@
 package hSap
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -43,9 +44,26 @@ func (h *handler) OrderConsumption(c echo.Context) error {
 
 	log.Printf("📤 Retornando %d consumos con fechas", len(use))
 	for i, item := range use {
-		log.Printf("  [%d] Component=%s, CreatedAt=%v, UpdatedAt=%v",
-			i, item.ComponentSapCode, item.CreatedAt, item.UpdatedAt)
+		createdAtStr := "nil"
+		updatedAtStr := "nil"
+		if item.CreatedAt != nil {
+			createdAtStr = item.CreatedAt.Format(time.RFC3339)
+		}
+		if item.UpdatedAt != nil {
+			updatedAtStr = item.UpdatedAt.Format(time.RFC3339)
+		}
+		log.Printf("  [%d] Component=%s, CreatedAt=%s, UpdatedAt=%s",
+			i, item.ComponentSapCode, createdAtStr, updatedAtStr)
 	}
+	
+	// Log del JSON que se va a retornar
+	jsonBytes, _ := json.Marshal(use)
+	jsonStr := string(jsonBytes)
+	if len(jsonStr) > 500 {
+		jsonStr = jsonStr[:500] + "..."
+	}
+	log.Printf("📤 JSON a retornar: %s", jsonStr)
+	
 	return c.JSON(http.StatusOK, use)
 }
 
