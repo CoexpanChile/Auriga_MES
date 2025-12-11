@@ -35,7 +35,7 @@ func (s *service) DosingConsumptionList(factory string, prodline string, system 
 
 	log.Printf("📥 Consumos obtenidos desde BD: %d registros", len(consumptions))
 	for i, c := range consumptions {
-		log.Printf("  [%d] Component=%s, CreatedAt=%v (IsZero=%v), UpdatedAt=%v (IsZero=%v)", 
+		log.Printf("  [%d] Component=%s, CreatedAt=%v (IsZero=%v), UpdatedAt=%v (IsZero=%v)",
 			i, c.MrComponentSapCode, c.CreatedAt, c.CreatedAt.IsZero(), c.UpdatedAt, c.UpdatedAt.IsZero())
 	}
 

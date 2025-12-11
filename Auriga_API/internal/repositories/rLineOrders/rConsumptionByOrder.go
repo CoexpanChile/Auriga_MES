@@ -17,14 +17,14 @@ func (m *repository) ConsumptionByOrder(recipeSapCode string, factory string, pr
 		recipeSapCode, factory, prodLine).Order("factory ASC, prod_line ASC, dosing_unit ASC, hopper ASC").Find(&consumptions).Error; err != nil {
 		return consumptions, errors.New("no se pudo encontrar el dato")
 	}
-	
+
 	// Log para verificar fechas leídas desde BD
 	fmt.Printf("📥 [ConsumptionByOrder] Leídos %d consumos desde BD\n", len(consumptions))
 	for i, c := range consumptions {
 		fmt.Printf("  [%d] Component=%s, CreatedAt=%v (IsZero=%v), UpdatedAt=%v (IsZero=%v)\n",
 			i, c.MrComponentSapCode, c.CreatedAt, c.CreatedAt.IsZero(), c.UpdatedAt, c.UpdatedAt.IsZero())
 	}
-	
+
 	return consumptions, nil
 }
 
