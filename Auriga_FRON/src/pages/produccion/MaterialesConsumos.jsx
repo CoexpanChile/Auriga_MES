@@ -1,6 +1,6 @@
 import React, { useState, useEffect, memo, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Factory, Package, RefreshCw, Loader2, ChevronRight, Home, Trash2, AlertCircle, CheckCircle2, X, Edit, Settings, Plus, PlayCircle, Square } from 'lucide-react'
+import { Factory, Package, RefreshCw, Loader2, ChevronRight, Home, Trash2, AlertCircle, CheckCircle2, X, Edit, Settings, Plus, PlayCircle, Square, Calculator } from 'lucide-react'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { api } from '../../lib/api'
@@ -806,6 +806,70 @@ function MaterialsConsumablesPage() {
     }
   }
 
+
+  // Función para calcular consumos desde InfluxDB
+  const handleCalculateConsumptions = async () => {
+    if (!selectedOrder || !selectedLine) {
+      showError('Selecciona una orden y línea primero')
+      return
+    }
+    
+    try {
+      setLoadingConsumptions(true)
+      clearError()
+      
+      const factory = selectedLine.factory || getFactoryFromLine(selectedLine)
+      const prodLine = selectedLine.line || selectedLine.code || ''
+      
+      if (!factory || !prodLine) {
+        showError('Error: Faltan datos requeridos (factory o prodLine)')
+        return
+      }
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'Factory': factory,
+        'ProdLine': prodLine,
+        'SapOrderCode': selectedOrder.OrderNumber.trim()
+      }
+      
+      debug.log('🔄 Calculando consumos desde InfluxDB:', {
+        factory,
+        prodLine,
+        orderNumber: selectedOrder.OrderNumber,
+        headers
+      })
+      
+      const response = await api.get('/sap/orderConsump/Calculate', {
+        headers: headers,
+      })
+      
+      const consumptionsData = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
+      const filteredConsumptions = consumptionsData.filter(c => 
+        c.ComponentSapCode && c.ComponentSapCode.trim() !== ''
+      )
+      
+      debug.log('✅ Consumos calculados desde InfluxDB:', {
+        total: filteredConsumptions.length,
+        consumptions: filteredConsumptions
+      })
+      
+      // Actualizar el estado de consumos con los datos calculados
+      setConsumptions(filteredConsumptions)
+      
+      // Recargar la receta para actualizar las cantidades declaradas
+      await loadRecipe(true)
+      
+      showSuccess(`Consumos calculados exitosamente: ${filteredConsumptions.length} declaraciones encontradas`)
+      setLastUpdate(new Date())
+    } catch (err) {
+      debug.error('Error calculating consumptions:', err)
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Error al calcular los consumos desde InfluxDB'
+      showError(errorMessage)
+    } finally {
+      setLoadingConsumptions(false)
+    }
+  }
 
   // Función para editar consumo
   const handleDeleteConsumption = async (consumption) => {
@@ -2388,8 +2452,10 @@ function MaterialsConsumablesPage() {
                                     return sum + qty
                                   }, 0)
                                 
-                                // Mostrar siempre 0 en cantidad declarada (limpiado según solicitud del usuario)
-                                const displayQuantity = '0'
+                                // Mostrar la cantidad declarada calculada desde los consumos
+                                const displayQuantity = declaredQuantityFromConsumptions > 0 
+                                  ? declaredQuantityFromConsumptions.toFixed(3) 
+                                  : '0'
                                 
                                 return (
                                   <span className="text-white font-medium">
@@ -2690,9 +2756,29 @@ function MaterialsConsumablesPage() {
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-xl font-bold text-white">Declaraciones Registradas</h3>
-                    <Badge variant="secondary" className="text-sm">
-                      {consumptions.length} {consumptions.length === 1 ? 'declaración' : 'declaraciones'}
-                    </Badge>
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary" className="text-sm">
+                        {consumptions.length} {consumptions.length === 1 ? 'declaración' : 'declaraciones'}
+                      </Badge>
+                      <button
+                        onClick={handleCalculateConsumptions}
+                        disabled={loadingConsumptions}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors text-white text-sm font-medium"
+                        title="Calcular consumos desde InfluxDB y actualizar cantidades declaradas"
+                      >
+                        {loadingConsumptions ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Calculando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Calculator className="w-4 h-4" />
+                            <span>Calcular</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-3">
