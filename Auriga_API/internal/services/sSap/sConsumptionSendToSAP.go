@@ -36,7 +36,7 @@ type SAPConsumptionPayload struct {
 func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sapOrderCode string, startDate *time.Time, endDate *time.Time, workdayID string, turno string) ([]SAPSendResult, error) {
 	log.Println("🚀 ===== INICIANDO DosingConsumptionSendToSAP =====")
 	log.Printf("📋 Parámetros: Factory=%s, ProdLine=%s, OrderCode=%s, WorkdayID=%s, Turno=%s", factory, prodline, sapOrderCode, workdayID, turno)
-	
+
 	// Obtener consumos calculados
 	log.Println("📥 Obteniendo consumos desde BD...")
 	consumptions, err := s.repositoryOrd.ConsumptionByOrder(sapOrderCode, factory, prodline)
@@ -100,7 +100,7 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 	log.Printf("📤 Iniciando envío de %d consumos a SAP...", len(consumptions))
 	for i, consumption := range consumptions {
 		log.Printf("📤 [%d/%d] Procesando consumo: Componente=%s, Dosificador=%s", i+1, len(consumptions), consumption.MrComponentSapCode, consumption.DosingUnit)
-		
+
 		result := SAPSendResult{
 			ComponentSapCode: consumption.MrComponentSapCode,
 			DosingUnit:       consumption.DosingUnit,

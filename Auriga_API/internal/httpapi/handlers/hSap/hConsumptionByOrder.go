@@ -206,7 +206,7 @@ func (h *handler) OrderConsumptionCalculate(c echo.Context) error {
 func (h *handler) OrderConsumptionSummaryToSAP(c echo.Context) error {
 	log.Println("🚀 ===== INICIANDO OrderConsumptionSummaryToSAP =====")
 	log.Println("📥 Request recibido en /sap/orderConsump/CalcToSAP")
-	
+
 	u := new(mhOrderConsumption)
 	u.Factory = c.Request().Header.Get("Factory")
 	u.ProdLine = c.Request().Header.Get("ProdLine")
@@ -272,7 +272,7 @@ func (h *handler) OrderConsumptionSummaryToSAP(c echo.Context) error {
 		log.Printf("❌ No hay resultados para devolver, error completo: %v", err)
 		return c.JSON(http.StatusInternalServerError, responseMessage{Message: fmt.Sprintf("Error al enviar consumos a SAP: %v", err)})
 	}
-	
+
 	log.Printf("✅ Servicio completado exitosamente, devolviendo %d resultados", len(results))
 
 	// Contar éxitos y errores

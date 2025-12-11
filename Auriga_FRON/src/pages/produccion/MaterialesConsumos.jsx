@@ -1654,6 +1654,31 @@ function MaterialsConsumablesPage() {
     })
   }
 
+  // Formatear fecha/hora para declaraciones (formato: YYYY-MM-DD HH:mm:ss.SSS +TZ)
+  const formatConsumptionDateTime = (date) => {
+    if (!date) return '-'
+    const d = new Date(date)
+    
+    // Obtener año, mes, día
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    
+    // Obtener hora, minuto, segundo, milisegundos
+    const hours = String(d.getHours()).padStart(2, '0')
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    const seconds = String(d.getSeconds()).padStart(2, '0')
+    const milliseconds = String(d.getMilliseconds()).padStart(3, '0')
+    
+    // Obtener timezone offset
+    const offset = -d.getTimezoneOffset()
+    const offsetHours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0')
+    const offsetMinutes = String(Math.abs(offset) % 60).padStart(2, '0')
+    const offsetSign = offset >= 0 ? '+' : '-'
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds} ${offsetSign}${offsetHours}${offsetMinutes}`
+  }
+
 
   // Cargar dosificadores y hoppers cuando cambian la línea u orden
   useEffect(() => {
@@ -3014,6 +3039,27 @@ function MaterialsConsumablesPage() {
                                 <span className="text-lg font-bold text-green-400">
                                   {parseFloat(consumption.CommittedQuantity).toFixed(3)} {unit}
                                 </span>
+                              </div>
+                            )}
+                            {/* Fechas de inicio y fin de la declaración */}
+                            {(consumption.CreatedAt || consumption.UpdatedAt) && (
+                              <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
+                                {consumption.CreatedAt && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-500">Fecha/hora inicio:</span>
+                                    <span className="text-gray-300 font-mono">
+                                      {formatConsumptionDateTime(consumption.CreatedAt)}
+                                    </span>
+                                  </div>
+                                )}
+                                {consumption.UpdatedAt && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-500">Fecha/hora fin:</span>
+                                    <span className="text-gray-300 font-mono">
+                                      {formatConsumptionDateTime(consumption.UpdatedAt)}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

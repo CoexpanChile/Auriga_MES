@@ -9,10 +9,12 @@ import (
 )
 
 type msDosingComponent struct {
-	DosingUnit        string  `json:"DosingUnit"`
-	DosingHopper      string  `json:"DosingHopper"`
-	ComponentSapCode  string  `json:"ComponentSapCode"`
-	CommittedQuantity float32 `json:"CommittedQuantity"`
+	DosingUnit        string    `json:"DosingUnit"`
+	DosingHopper      string    `json:"DosingHopper"`
+	ComponentSapCode  string    `json:"ComponentSapCode"`
+	CommittedQuantity float32   `json:"CommittedQuantity"`
+	CreatedAt         time.Time `json:"CreatedAt"`
+	UpdatedAt         time.Time `json:"UpdatedAt"`
 }
 
 func (s *service) DosingConsumptionList(factory string, prodline string, system string, sapOrderCode string, sapRequest string) ([]msDosingComponent, error) {
@@ -39,6 +41,8 @@ func (s *service) DosingConsumptionList(factory string, prodline string, system 
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
+			CreatedAt:         c.CreatedAt,
+			UpdatedAt:         c.UpdatedAt,
 		})
 	}
 
@@ -123,6 +127,8 @@ func (s *service) DosingConsumptionDel(factory string, prodline string, dosingSy
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
+			CreatedAt:         c.CreatedAt,
+			UpdatedAt:         c.UpdatedAt,
 		})
 	}
 	return data, nil
@@ -148,6 +154,8 @@ func (s *service) DosingConsumptionUpdate(factory string, prodline string, dosin
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
+			CreatedAt:         c.CreatedAt,
+			UpdatedAt:         c.UpdatedAt,
 		})
 	}
 	return data, nil
@@ -277,6 +285,8 @@ func (s *service) DosingConsumptionCalculate(factory string, prodline string, sa
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
+			CreatedAt:         c.CreatedAt,
+			UpdatedAt:         c.UpdatedAt,
 		})
 	}
 
