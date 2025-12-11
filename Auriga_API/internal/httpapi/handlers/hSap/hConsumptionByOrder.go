@@ -41,7 +41,11 @@ func (h *handler) OrderConsumption(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, responseMessage{Message: "Registro no existeeee"})
 	}
 
-	//log.Println("Estos son los datos:", use)
+	log.Printf("📤 Retornando %d consumos con fechas", len(use))
+	for i, item := range use {
+		log.Printf("  [%d] Component=%s, CreatedAt=%v, UpdatedAt=%v", 
+			i, item.ComponentSapCode, item.CreatedAt, item.UpdatedAt)
+	}
 	return c.JSON(http.StatusOK, use)
 }
 

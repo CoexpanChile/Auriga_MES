@@ -786,6 +786,15 @@ function MaterialsConsumablesPage() {
         c.ComponentSapCode && c.ComponentSapCode.trim() !== ''
       )
       
+      // Debug: Verificar si las fechas están presentes
+      debug.log('📅 Consumos cargados con fechas:', filteredConsumptions.map(c => ({
+        ComponentSapCode: c.ComponentSapCode,
+        CreatedAt: c.CreatedAt,
+        UpdatedAt: c.UpdatedAt,
+        hasCreatedAt: !!c.CreatedAt,
+        hasUpdatedAt: !!c.UpdatedAt
+      })))
+      
       setConsumptions(filteredConsumptions)
       setLastUpdate(new Date())
     } catch (err) {
@@ -1656,8 +1665,19 @@ function MaterialsConsumablesPage() {
 
   // Formatear fecha/hora para declaraciones (formato: YYYY-MM-DD HH:mm:ss.SSS +TZ)
   const formatConsumptionDateTime = (date) => {
-    if (!date) return '-'
+    if (!date) {
+      debug.warn('⚠️ formatConsumptionDateTime recibió fecha vacía/null/undefined')
+      return '-'
+    }
+    
+    // Manejar diferentes formatos de fecha (string ISO, Date object, etc.)
     const d = new Date(date)
+    
+    // Verificar si la fecha es válida
+    if (isNaN(d.getTime())) {
+      debug.warn('⚠️ formatConsumptionDateTime: fecha inválida', date)
+      return 'Fecha inválida'
+    }
     
     // Obtener año, mes, día
     const year = d.getFullYear()
@@ -3042,26 +3062,32 @@ function MaterialsConsumablesPage() {
                               </div>
                             )}
                             {/* Fechas de inicio y fin de la declaración */}
-                            {(consumption.CreatedAt || consumption.UpdatedAt) && (
-                              <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
-                                {consumption.CreatedAt && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-gray-500">Fecha/hora inicio:</span>
-                                    <span className="text-gray-300 font-mono">
-                                      {formatConsumptionDateTime(consumption.CreatedAt)}
-                                    </span>
-                                  </div>
-                                )}
-                                {consumption.UpdatedAt && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-gray-500">Fecha/hora fin:</span>
-                                    <span className="text-gray-300 font-mono">
-                                      {formatConsumptionDateTime(consumption.UpdatedAt)}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
+                              {consumption.CreatedAt ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500">Fecha/hora inicio:</span>
+                                  <span className="text-gray-300 font-mono">
+                                    {formatConsumptionDateTime(consumption.CreatedAt)}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 text-yellow-500">
+                                  <span>⚠️ Fecha/hora inicio no disponible</span>
+                                </div>
+                              )}
+                              {consumption.UpdatedAt ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500">Fecha/hora fin:</span>
+                                  <span className="text-gray-300 font-mono">
+                                    {formatConsumptionDateTime(consumption.UpdatedAt)}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 text-yellow-500">
+                                  <span>⚠️ Fecha/hora fin no disponible</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-2 ml-4">

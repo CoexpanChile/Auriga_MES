@@ -36,6 +36,12 @@ func (s *service) DosingConsumptionList(factory string, prodline string, system 
 	//	log.Println("consumptions:", consumptions)
 
 	for _, c := range consumptions {
+		// Verificar si las fechas son válidas (no zero time)
+		hasCreatedAt := !c.CreatedAt.IsZero()
+		hasUpdatedAt := !c.UpdatedAt.IsZero()
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
+		
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
@@ -122,6 +128,12 @@ func (s *service) DosingConsumptionDel(factory string, prodline string, dosingSy
 		return data, err
 	}
 	for _, c := range consumptions {
+		// Verificar si las fechas son válidas (no zero time)
+		hasCreatedAt := !c.CreatedAt.IsZero()
+		hasUpdatedAt := !c.UpdatedAt.IsZero()
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
+		
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
@@ -149,6 +161,12 @@ func (s *service) DosingConsumptionUpdate(factory string, prodline string, dosin
 		return data, err
 	}
 	for _, c := range consumptions {
+		// Verificar si las fechas son válidas (no zero time)
+		hasCreatedAt := !c.CreatedAt.IsZero()
+		hasUpdatedAt := !c.UpdatedAt.IsZero()
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
+		
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
@@ -280,6 +298,12 @@ func (s *service) DosingConsumptionCalculate(factory string, prodline string, sa
 	log.Println("consumptionskkkkkkkkkkkkkkk:", consumptions)
 
 	for _, c := range consumptions {
+		// Verificar si las fechas son válidas (no zero time)
+		hasCreatedAt := !c.CreatedAt.IsZero()
+		hasUpdatedAt := !c.UpdatedAt.IsZero()
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
+		
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
