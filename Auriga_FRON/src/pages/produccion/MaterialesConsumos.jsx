@@ -1665,9 +1665,10 @@ function MaterialsConsumablesPage() {
 
   // Formatear fecha/hora para declaraciones (formato: YYYY-MM-DD HH:mm:ss.SSS +TZ)
   const formatConsumptionDateTime = (date) => {
-    if (!date) {
-      debug.warn('⚠️ formatConsumptionDateTime recibió fecha vacía/null/undefined')
-      return '-'
+    // Manejar null, undefined, o string vacío
+    if (!date || date === 'null' || date === 'undefined' || date === '') {
+      debug.warn('⚠️ formatConsumptionDateTime recibió fecha vacía/null/undefined:', date)
+      return null // Retornar null para que el componente no muestre nada
     }
     
     // Manejar diferentes formatos de fecha (string ISO, Date object, etc.)
@@ -1675,8 +1676,14 @@ function MaterialsConsumablesPage() {
     
     // Verificar si la fecha es válida
     if (isNaN(d.getTime())) {
-      debug.warn('⚠️ formatConsumptionDateTime: fecha inválida', date)
-      return 'Fecha inválida'
+      debug.warn('⚠️ formatConsumptionDateTime: fecha inválida', date, typeof date)
+      return null
+    }
+    
+    // Verificar si es una fecha zero time (0001-01-01)
+    if (d.getFullYear() < 1900) {
+      debug.warn('⚠️ formatConsumptionDateTime: fecha zero time detectada', date)
+      return null
     }
     
     // Obtener año, mes, día
@@ -3062,32 +3069,40 @@ function MaterialsConsumablesPage() {
                               </div>
                             )}
                             {/* Fechas de inicio y fin de la declaración */}
-                            <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
-                              {consumption.CreatedAt ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-500">Fecha/hora inicio:</span>
-                                  <span className="text-gray-300 font-mono">
-                                    {formatConsumptionDateTime(consumption.CreatedAt)}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2 text-yellow-500">
-                                  <span>⚠️ Fecha/hora inicio no disponible</span>
-                                </div>
-                              )}
-                              {consumption.UpdatedAt ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-500">Fecha/hora fin:</span>
-                                  <span className="text-gray-300 font-mono">
-                                    {formatConsumptionDateTime(consumption.UpdatedAt)}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2 text-yellow-500">
-                                  <span>⚠️ Fecha/hora fin no disponible</span>
-                                </div>
-                              )}
-                            </div>
+                            {(consumption.CreatedAt || consumption.UpdatedAt) && (
+                              <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
+                                {(() => {
+                                  const startDate = formatConsumptionDateTime(consumption.CreatedAt)
+                                  return startDate ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-gray-500">Fecha/hora inicio:</span>
+                                      <span className="text-gray-300 font-mono">
+                                        {startDate}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 text-yellow-500">
+                                      <span>⚠️ Fecha/hora inicio no disponible</span>
+                                    </div>
+                                  )
+                                })()}
+                                {(() => {
+                                  const endDate = formatConsumptionDateTime(consumption.UpdatedAt)
+                                  return endDate ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-gray-500">Fecha/hora fin:</span>
+                                      <span className="text-gray-300 font-mono">
+                                        {endDate}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 text-yellow-500">
+                                      <span>⚠️ Fecha/hora fin no disponible</span>
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 ml-4">

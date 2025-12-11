@@ -9,12 +9,12 @@ import (
 )
 
 type msDosingComponent struct {
-	DosingUnit        string    `json:"DosingUnit"`
-	DosingHopper      string    `json:"DosingHopper"`
-	ComponentSapCode  string    `json:"ComponentSapCode"`
-	CommittedQuantity float32   `json:"CommittedQuantity"`
-	CreatedAt         time.Time `json:"CreatedAt"`
-	UpdatedAt         time.Time `json:"UpdatedAt"`
+	DosingUnit        string     `json:"DosingUnit"`
+	DosingHopper      string     `json:"DosingHopper"`
+	ComponentSapCode  string     `json:"ComponentSapCode"`
+	CommittedQuantity float32    `json:"CommittedQuantity"`
+	CreatedAt         *time.Time `json:"CreatedAt,omitempty"`
+	UpdatedAt         *time.Time `json:"UpdatedAt,omitempty"`
 }
 
 func (s *service) DosingConsumptionList(factory string, prodline string, system string, sapOrderCode string, sapRequest string) ([]msDosingComponent, error) {
@@ -33,22 +33,36 @@ func (s *service) DosingConsumptionList(factory string, prodline string, system 
 		return data, err
 	}
 
-	//	log.Println("consumptions:", consumptions)
+	log.Printf("📥 Consumos obtenidos desde BD: %d registros", len(consumptions))
+	for i, c := range consumptions {
+		log.Printf("  [%d] Component=%s, CreatedAt=%v (IsZero=%v), UpdatedAt=%v (IsZero=%v)", 
+			i, c.MrComponentSapCode, c.CreatedAt, c.CreatedAt.IsZero(), c.UpdatedAt, c.UpdatedAt.IsZero())
+	}
 
 	for _, c := range consumptions {
 		// Verificar si las fechas son válidas (no zero time)
 		hasCreatedAt := !c.CreatedAt.IsZero()
 		hasUpdatedAt := !c.UpdatedAt.IsZero()
-		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)",
 			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
-		
+
+		// Usar punteros para las fechas, solo incluir si no son zero time
+		var createdAtPtr *time.Time
+		var updatedAtPtr *time.Time
+		if hasCreatedAt {
+			createdAtPtr = &c.CreatedAt
+		}
+		if hasUpdatedAt {
+			updatedAtPtr = &c.UpdatedAt
+		}
+
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
-			CreatedAt:         c.CreatedAt,
-			UpdatedAt:         c.UpdatedAt,
+			CreatedAt:         createdAtPtr,
+			UpdatedAt:         updatedAtPtr,
 		})
 	}
 
@@ -131,16 +145,26 @@ func (s *service) DosingConsumptionDel(factory string, prodline string, dosingSy
 		// Verificar si las fechas son válidas (no zero time)
 		hasCreatedAt := !c.CreatedAt.IsZero()
 		hasUpdatedAt := !c.UpdatedAt.IsZero()
-		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)",
 			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
-		
+
+		// Usar punteros para las fechas, solo incluir si no son zero time
+		var createdAtPtr *time.Time
+		var updatedAtPtr *time.Time
+		if hasCreatedAt {
+			createdAtPtr = &c.CreatedAt
+		}
+		if hasUpdatedAt {
+			updatedAtPtr = &c.UpdatedAt
+		}
+
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
-			CreatedAt:         c.CreatedAt,
-			UpdatedAt:         c.UpdatedAt,
+			CreatedAt:         createdAtPtr,
+			UpdatedAt:         updatedAtPtr,
 		})
 	}
 	return data, nil
@@ -164,16 +188,26 @@ func (s *service) DosingConsumptionUpdate(factory string, prodline string, dosin
 		// Verificar si las fechas son válidas (no zero time)
 		hasCreatedAt := !c.CreatedAt.IsZero()
 		hasUpdatedAt := !c.UpdatedAt.IsZero()
-		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)",
 			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
-		
+
+		// Usar punteros para las fechas, solo incluir si no son zero time
+		var createdAtPtr *time.Time
+		var updatedAtPtr *time.Time
+		if hasCreatedAt {
+			createdAtPtr = &c.CreatedAt
+		}
+		if hasUpdatedAt {
+			updatedAtPtr = &c.UpdatedAt
+		}
+
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
-			CreatedAt:         c.CreatedAt,
-			UpdatedAt:         c.UpdatedAt,
+			CreatedAt:         createdAtPtr,
+			UpdatedAt:         updatedAtPtr,
 		})
 	}
 	return data, nil
@@ -301,16 +335,26 @@ func (s *service) DosingConsumptionCalculate(factory string, prodline string, sa
 		// Verificar si las fechas son válidas (no zero time)
 		hasCreatedAt := !c.CreatedAt.IsZero()
 		hasUpdatedAt := !c.UpdatedAt.IsZero()
-		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)", 
+		log.Printf("📅 Mapeando consumo: Component=%s, CreatedAt=%v (zero=%v), UpdatedAt=%v (zero=%v)",
 			c.MrComponentSapCode, c.CreatedAt, !hasCreatedAt, c.UpdatedAt, !hasUpdatedAt)
-		
+
+		// Usar punteros para las fechas, solo incluir si no son zero time
+		var createdAtPtr *time.Time
+		var updatedAtPtr *time.Time
+		if hasCreatedAt {
+			createdAtPtr = &c.CreatedAt
+		}
+		if hasUpdatedAt {
+			updatedAtPtr = &c.UpdatedAt
+		}
+
 		data = append(data, msDosingComponent{
 			DosingUnit:        c.DosingUnit,
 			DosingHopper:      c.Hopper,
 			ComponentSapCode:  c.MrComponentSapCode,
 			CommittedQuantity: c.CommittedQuantity,
-			CreatedAt:         c.CreatedAt,
-			UpdatedAt:         c.UpdatedAt,
+			CreatedAt:         createdAtPtr,
+			UpdatedAt:         updatedAtPtr,
 		})
 	}
 

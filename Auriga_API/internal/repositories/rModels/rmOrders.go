@@ -30,8 +30,8 @@ type MrConsumption struct {
 	DosingUnit         string  `gorm:"type:varchar(32);not null;check:char_length(dosing_unit) > 0;uniqueIndex:idx_unique_consumption,where:deleted_at IS NULL"`
 	Hopper             string  `gorm:"type:varchar(32);not null;check:char_length(hopper) > 0;uniqueIndex:idx_unique_consumption,where:deleted_at IS NULL"`
 	CommittedQuantity  float32 `gorm:"type:float"`
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	CreatedAt          time.Time `gorm:"column:created_at"`
+	UpdatedAt          time.Time `gorm:"column:updated_at"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
