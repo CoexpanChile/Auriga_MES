@@ -9,10 +9,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type responseMessage struct {
-	Message string `json:"message"`
-}
-
 type mhOrderConsumption struct {
 	Factory          string `json:"factory" 			form:"factory" 				query:"factory"`
 	ProdLine         string `json:"prodline" 			form:"prodline" 			query:"prodline"`
