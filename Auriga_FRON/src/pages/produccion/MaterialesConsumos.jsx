@@ -1,6 +1,6 @@
 import React, { useState, useEffect, memo, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Factory, Package, RefreshCw, Loader2, ChevronRight, Home, Trash2, Calculator, AlertCircle, CheckCircle2, X, Edit, Settings, Plus, PlayCircle, Square } from 'lucide-react'
+import { Factory, Package, RefreshCw, Loader2, ChevronRight, Home, Trash2, AlertCircle, CheckCircle2, X, Edit, Settings, Plus, PlayCircle, Square } from 'lucide-react'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { api } from '../../lib/api'
@@ -171,7 +171,6 @@ function MaterialsConsumablesPage() {
   const [showEndModal, setShowEndModal] = useState(false)
   const [tempStartDateTime, setTempStartDateTime] = useState('')
   const [tempEndDateTime, setTempEndDateTime] = useState('')
-  const [loadingQuantityFromInflux, setLoadingQuantityFromInflux] = useState(false)
   
   // Estados para modales de gestión CRUD
   const [showEditModal, setShowEditModal] = useState(false)
@@ -810,45 +809,6 @@ function MaterialsConsumablesPage() {
     }
   }
 
-  const handleCalculateConsumptions = async () => {
-    if (!selectedOrder || !selectedLine) return
-    
-    try {
-      setLoadingConsumptions(true)
-      clearError()
-      clearSuccess()
-      
-      const headers = {
-        'Content-Type': 'application/json',
-        'Factory': selectedLine.factory,
-        'ProdLine': selectedLine.line,
-        'SapOrderCode': selectedOrder.OrderNumber
-      }
-      
-      const response = await api.get('/sap/orderConsump/Calculate', {
-        headers: headers,
-        
-      })
-      
-      const consumptionsData = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
-      const filteredConsumptions = consumptionsData.filter(c => 
-        c.ComponentSapCode && c.ComponentSapCode.trim() !== ''
-      )
-      
-      setConsumptions(filteredConsumptions)
-      showSuccess('Consumos calculados exitosamente desde InfluxDB')
-      setLastUpdate(new Date())
-      
-      // Ocultar mensaje de éxito después de 5 segundos
-    } catch (err) {
-      debug.error('Error calculating consumptions:', err)
-      // Mostrar el mensaje de error del backend si está disponible
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Error al calcular los consumos desde InfluxDB'
-      showError(errorMessage)
-    } finally {
-      setLoadingConsumptions(false)
-    }
-  }
 
   // Función para editar consumo
   const handleDeleteConsumption = async (consumption) => {
@@ -1528,148 +1488,6 @@ function MaterialsConsumablesPage() {
     })
   }
 
-  // Función para obtener la cantidad desde InfluxDB
-  const fetchQuantityFromInfluxDB = useCallback(async () => {
-    // Validar que todos los parámetros necesarios estén disponibles
-    if (!ofStartDateTime || !ofEndDateTime || !declarationForm.dosifierId || !declarationForm.hopperId || !selectedLine || !selectedOrder) {
-      return
-    }
-
-    // Obtener el dosificador y hopper seleccionados
-    const selectedDosifier = dosifiersFromAPI.find(d => String(d.id) === String(declarationForm.dosifierId))
-    const selectedHopper = hoppersFromAPI.find(h => String(h.id) === String(declarationForm.hopperId))
-
-    if (!selectedDosifier || !selectedHopper) {
-      return
-    }
-
-    try {
-      setLoadingQuantityFromInflux(true)
-      
-      // Obtener factory y prodLine
-      const factory = getFactoryFromLine(selectedLine)
-      const prodLine = selectedLine.line || selectedLine.code || ''
-
-      debug.log('📊 Consultando InfluxDB para obtener cantidad:', {
-        factory,
-        prodLine,
-        dosifier: selectedDosifier.name,
-        hopper: selectedHopper.name,
-        startDate: ofStartDateTime ? new Date(ofStartDateTime).toISOString() : null,
-        endDate: ofEndDateTime ? new Date(ofEndDateTime).toISOString() : null,
-        orderNumber: selectedOrder.OrderNumber
-      })
-
-      // Formatear fechas en formato ISO para la API
-      const startDateISO = new Date(ofStartDateTime).toISOString()
-      const endDateISO = new Date(ofEndDateTime).toISOString()
-
-      // Llamar a la API de InfluxDB
-      // El endpoint /sap/orderConsump/Calculate requiere estos headers:
-      // - Factory (requerido)
-      // - ProdLine (requerido)
-      // - SapOrderCode (requerido)
-      // - StartDate (requerido) - Fecha de inicio en formato ISO
-      // - EndDate (requerido) - Fecha de fin en formato ISO
-      // - SapCode (opcional)
-      const headers = {
-        'Content-Type': 'application/json',
-        'Factory': factory,
-        'ProdLine': prodLine,
-        'SapOrderCode': selectedOrder.OrderNumber.trim(),
-        'StartDate': startDateISO,
-        'EndDate': endDateISO
-      }
-
-      // Si hay SapCode disponible, agregarlo
-      if (selectedLine.sap_code) {
-        headers['SapCode'] = selectedLine.sap_code
-      }
-
-      const response = await api.get('/sap/orderConsump/Calculate', {
-        headers: headers,
-      })
-
-      // El response debería ser un array de consumos
-      // Buscar el consumo que coincida con el componente, dosificador y hopper seleccionados
-      const consumptionsData = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : [])
-      
-      // Obtener el código del dosificador y hopper (usar code si está disponible, sino name)
-      const dosifierCode = selectedDosifier.code || selectedDosifier.name
-      const hopperCode = selectedHopper.code || selectedHopper.name
-      
-      debug.log('🔍 Buscando cantidad en consumptionsData:', {
-        dosifierCode,
-        hopperCode,
-        componentCode: declarationForm.componentSapCode,
-        totalConsumptions: consumptionsData.length,
-        consumptionsData: consumptionsData
-      })
-      
-      // Si hay un componente seleccionado, buscar el consumo específico para ese componente
-      if (declarationForm.componentSapCode) {
-        const matchingConsumption = consumptionsData.find(c => 
-          c.ComponentSapCode && c.ComponentSapCode.trim() === declarationForm.componentSapCode.trim() &&
-          c.DosingUnit && (c.DosingUnit.trim() === dosifierCode.trim() || c.DosingUnit.trim() === selectedDosifier.name.trim()) &&
-          c.DosingHopper && (c.DosingHopper.trim() === hopperCode.trim() || c.DosingHopper.trim() === selectedHopper.name.trim())
-        )
-
-        if (matchingConsumption && matchingConsumption.CommittedQuantity) {
-          const quantity = parseFloat(matchingConsumption.CommittedQuantity)
-          if (!isNaN(quantity) && quantity > 0) {
-            setDeclarationForm(prev => ({ ...prev, quantity: quantity.toFixed(3) }))
-            debug.log('✅ Cantidad obtenida desde InfluxDB (coincidencia exacta):', quantity)
-            return
-          }
-        }
-      }
-
-      // Si no hay componente seleccionado o no se encontró coincidencia exacta,
-      // sumar todas las cantidades para el dosificador y hopper seleccionados
-      const totalQuantity = consumptionsData
-        .filter(c => {
-          const matchesDosifier = c.DosingUnit && (
-            c.DosingUnit.trim() === dosifierCode.trim() || 
-            c.DosingUnit.trim() === selectedDosifier.name.trim()
-          )
-          const matchesHopper = c.DosingHopper && (
-            c.DosingHopper.trim() === hopperCode.trim() || 
-            c.DosingHopper.trim() === selectedHopper.name.trim()
-          )
-          return matchesDosifier && matchesHopper
-        })
-        .reduce((sum, c) => {
-          const qty = parseFloat(c.CommittedQuantity) || 0
-          return sum + qty
-        }, 0)
-
-      if (totalQuantity > 0) {
-        setDeclarationForm(prev => ({ ...prev, quantity: totalQuantity.toFixed(3) }))
-        debug.log('✅ Cantidad total obtenida desde InfluxDB:', totalQuantity)
-      } else {
-        debug.log('⚠️ No se encontró cantidad en InfluxDB para los parámetros especificados')
-        // No actualizar el campo si no hay datos
-      }
-    } catch (err) {
-      debug.error('❌ Error al consultar InfluxDB para obtener cantidad:', err)
-      // No mostrar error al usuario, solo loguear
-    } finally {
-      setLoadingQuantityFromInflux(false)
-    }
-  }, [ofStartDateTime, ofEndDateTime, declarationForm.dosifierId, declarationForm.hopperId, declarationForm.componentSapCode, selectedLine, selectedOrder, dosifiersFromAPI, hoppersFromAPI])
-
-  // useEffect para consultar InfluxDB cuando cambien los parámetros
-  useEffect(() => {
-    // Solo consultar si todos los parámetros están disponibles
-    if (ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId && selectedLine && selectedOrder) {
-      // Esperar un momento antes de consultar para evitar múltiples llamadas
-      const timeoutId = setTimeout(() => {
-        fetchQuantityFromInfluxDB()
-      }, 500)
-
-      return () => clearTimeout(timeoutId)
-    }
-  }, [ofStartDateTime, ofEndDateTime, declarationForm.dosifierId, declarationForm.hopperId, declarationForm.componentSapCode, fetchQuantityFromInfluxDB, selectedLine, selectedOrder])
 
   // Cargar dosificadores y hoppers cuando cambian la línea u orden
   useEffect(() => {
@@ -2451,18 +2269,6 @@ function MaterialsConsumablesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={handleCalculateConsumptions}
-                      disabled={loadingConsumptions}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors"
-                    >
-                      {loadingConsumptions ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Calculator className="w-4 h-4" />
-                      )}
-                      <span className="text-white">Calcular desde InfluxDB</span>
-                    </button>
-                    <button
                       onClick={() => {
                         loadConsumptions()
                         loadRecipe()
@@ -2931,27 +2737,6 @@ function MaterialsConsumablesPage() {
                           <label className="block text-sm font-medium text-gray-300">
                             Cantidad a Declarar <span className="text-red-400">*</span>
                           </label>
-                          {ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId && (
-                            <button
-                              type="button"
-                              onClick={fetchQuantityFromInfluxDB}
-                              disabled={loadingQuantityFromInflux}
-                              className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white transition-colors"
-                              title="Recargar cantidad desde InfluxDB"
-                            >
-                              {loadingQuantityFromInflux ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  <span>Cargando...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <RefreshCw className="w-3 h-3" />
-                                  <span>Desde InfluxDB</span>
-                                </>
-                              )}
-                            </button>
-                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <input
@@ -2960,8 +2745,7 @@ function MaterialsConsumablesPage() {
                             min="0"
                             value={declarationForm.quantity}
                             onChange={(e) => setDeclarationForm(prev => ({ ...prev, quantity: e.target.value }))}
-                            placeholder={loadingQuantityFromInflux ? "Cargando desde InfluxDB..." : (ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId ? "Se cargará automáticamente desde InfluxDB" : "Ingresa la cantidad")}
-                            disabled={loadingQuantityFromInflux}
+                            placeholder="Ingresa la cantidad"
                             className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           {declarationForm.componentSapCode && (() => {
@@ -2985,11 +2769,6 @@ function MaterialsConsumablesPage() {
                           }
                           return null
                         })()}
-                        {ofStartDateTime && ofEndDateTime && declarationForm.dosifierId && declarationForm.hopperId && (
-                          <p className="text-xs text-blue-400 mt-1">
-                            💡 La cantidad se obtendrá automáticamente desde InfluxDB usando: Inicio OF, Fin OF, Dosificador y Hopper
-                          </p>
-                        )}
                       </div>
 
                       {/* Botón de Declarar */}
