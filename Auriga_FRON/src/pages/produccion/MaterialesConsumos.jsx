@@ -942,12 +942,82 @@ function MaterialsConsumablesPage() {
 
       debug.log('✅ Respuesta de SAP:', response)
 
-      showSuccess(`Consumos enviados exitosamente a SAP: ${consumptions.length} declaraciones`)
+      // Procesar respuesta detallada
+      const results = response?.results || []
+      const successCount = response?.successCount || 0
+      const errorCount = response?.errorCount || 0
+
+      if (errorCount === 0) {
+        // Todos exitosos
+        showSuccess(`✅ Todos los consumos (${successCount}) fueron enviados exitosamente a SAP`)
+      } else if (successCount > 0) {
+        // Parcialmente exitoso - mostrar éxito y error
+        showSuccess(`✅ ${successCount} consumos enviados exitosamente a SAP`, 5000)
+        
+        // Construir mensaje de error detallado
+        const errorDetails = results
+          .filter(r => !r.success)
+          .map(r => {
+            const component = r.componentSapCode || 'N/A'
+            const dosifier = r.dosingUnit || 'N/A'
+            const error = r.errorMessage || 'Error desconocido'
+            return `${component} (${dosifier}): ${error}`
+          })
+          .join(' | ')
+        
+        showError(
+          `⚠️ ${errorCount} consumos fallaron: ${errorDetails}`,
+          15000 // Mostrar por 15 segundos
+        )
+      } else {
+        // Todos fallaron
+        const errorDetails = results
+          .map(r => {
+            const component = r.componentSapCode || 'N/A'
+            const dosifier = r.dosingUnit || 'N/A'
+            const error = r.errorMessage || 'Error desconocido'
+            return `${component} (${dosifier}): ${error}`
+          })
+          .join(' | ')
+        
+        showError(
+          `❌ Todos los consumos fallaron: ${errorDetails}`,
+          15000 // Mostrar por 15 segundos
+        )
+      }
+
       setLastUpdate(new Date())
     } catch (err) {
       debug.error('Error sending to SAP:', err)
       const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Error al enviar consumos a SAP'
-      showError(errorMessage)
+      
+      // Si hay resultados parciales, mostrarlos
+      if (err.response?.data?.results) {
+        const results = err.response.data.results
+        const successCount = results.filter(r => r.success).length
+        const errorCount = results.filter(r => !r.success).length
+        
+        if (successCount > 0) {
+          showSuccess(`✅ ${successCount} consumos enviados exitosamente`, 5000)
+        }
+        
+        const errorDetails = results
+          .filter(r => !r.success)
+          .map(r => {
+            const component = r.componentSapCode || 'N/A'
+            const dosifier = r.dosingUnit || 'N/A'
+            const error = r.errorMessage || 'Error desconocido'
+            return `${component} (${dosifier}): ${error}`
+          })
+          .join(' | ')
+        
+        showError(
+          `${errorMessage} - ${errorDetails}`,
+          15000
+        )
+      } else {
+        showError(errorMessage)
+      }
     } finally {
       setSendingToSAP(false)
     }

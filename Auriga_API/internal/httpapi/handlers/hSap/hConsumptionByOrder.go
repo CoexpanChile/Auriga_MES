@@ -251,11 +251,43 @@ func (h *handler) OrderConsumptionSummaryToSAP(c echo.Context) error {
 	}
 
 	// Llamar al servicio para enviar a SAP
-	err := h.service.DosingConsumptionSendToSAP(u.Factory, u.ProdLine, u.SapOrderCode, startDate, endDate, workdayID, turno)
+	results, err := h.service.DosingConsumptionSendToSAP(u.Factory, u.ProdLine, u.SapOrderCode, startDate, endDate, workdayID, turno)
 	if err != nil {
 		log.Printf("Error enviando consumos a SAP: %v", err)
+		// Incluso si hay errores, devolver los resultados para que el frontend pueda mostrar detalles
+		if results != nil && len(results) > 0 {
+			return c.JSON(http.StatusPartialContent, map[string]interface{}{
+				"message": err.Error(),
+				"results": results,
+			})
+		}
 		return c.JSON(http.StatusInternalServerError, responseMessage{Message: fmt.Sprintf("Error al enviar consumos a SAP: %v", err)})
 	}
 
-	return c.JSON(http.StatusOK, responseMessage{Message: "Consumos enviados exitosamente a SAP"})
+	// Contar éxitos y errores
+	successCount := 0
+	errorCount := 0
+	for _, r := range results {
+		if r.Success {
+			successCount++
+		} else {
+			errorCount++
+		}
+	}
+
+	if errorCount > 0 {
+		return c.JSON(http.StatusPartialContent, map[string]interface{}{
+			"message":      fmt.Sprintf("Se enviaron %d consumos exitosamente, pero %d fallaron", successCount, errorCount),
+			"results":      results,
+			"successCount": successCount,
+			"errorCount":   errorCount,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message":      "Todos los consumos fueron enviados exitosamente a SAP",
+		"results":      results,
+		"successCount": successCount,
+		"errorCount":   errorCount,
+	})
 }
