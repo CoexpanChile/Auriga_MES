@@ -63,7 +63,7 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 	// Validar fechas
 	zeroTime := time.Time{}
 	if startedAt.Equal(zeroTime) || finishedAt.Equal(zeroTime) {
-		return nil, fmt.Errorf("las fechas de inicio y fin de la orden de fabricación no están configuradas")
+		return results, fmt.Errorf("las fechas de inicio y fin de la orden de fabricación no están configuradas")
 	}
 
 	// Obtener factory sap_code desde mr_assets
