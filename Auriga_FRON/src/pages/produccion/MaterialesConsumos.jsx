@@ -2943,7 +2943,17 @@ function MaterialsConsumablesPage() {
                         )}
                       </button>
                       <button
-                        onClick={handleSendToSAP}
+                        onClick={() => {
+                          console.log('🔘 [BOTÓN] Clic en "Enviar a SAP" detectado')
+                          console.log('🔘 [BOTÓN] Estado:', {
+                            sendingToSAP,
+                            loadingConsumptions,
+                            hasConsumptions: !!consumptions,
+                            consumptionsLength: consumptions?.length || 0,
+                            disabled: sendingToSAP || loadingConsumptions || !consumptions || consumptions.length === 0
+                          })
+                          handleSendToSAP()
+                        }}
                         disabled={sendingToSAP || loadingConsumptions || !consumptions || consumptions.length === 0}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors text-white text-sm font-medium"
                         title="Enviar consumos a SAP y guardar en base de datos"
