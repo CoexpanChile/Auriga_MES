@@ -34,14 +34,20 @@ type SAPConsumptionPayload struct {
 }
 
 func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sapOrderCode string, startDate *time.Time, endDate *time.Time, workdayID string, turno string) ([]SAPSendResult, error) {
+	log.Println("🚀 ===== INICIANDO DosingConsumptionSendToSAP =====")
+	log.Printf("📋 Parámetros: Factory=%s, ProdLine=%s, OrderCode=%s, WorkdayID=%s, Turno=%s", factory, prodline, sapOrderCode, workdayID, turno)
+	
 	// Obtener consumos calculados
+	log.Println("📥 Obteniendo consumos desde BD...")
 	consumptions, err := s.repositoryOrd.ConsumptionByOrder(sapOrderCode, factory, prodline)
 	if err != nil {
-		log.Println("Error obteniendo consumos Service DosingConsumptionSendToSAP:", err)
+		log.Printf("❌ Error obteniendo consumos Service DosingConsumptionSendToSAP: %v", err)
 		return nil, err
 	}
 
+	log.Printf("📊 Consumos encontrados: %d", len(consumptions))
 	if len(consumptions) == 0 {
+		log.Println("❌ No hay consumos para enviar a SAP")
 		return nil, fmt.Errorf("no hay consumos para enviar a SAP")
 	}
 
@@ -91,7 +97,10 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 	password := "1Lanter[]"
 
 	// Enviar cada consumo a SAP
-	for _, consumption := range consumptions {
+	log.Printf("📤 Iniciando envío de %d consumos a SAP...", len(consumptions))
+	for i, consumption := range consumptions {
+		log.Printf("📤 [%d/%d] Procesando consumo: Componente=%s, Dosificador=%s", i+1, len(consumptions), consumption.MrComponentSapCode, consumption.DosingUnit)
+		
 		result := SAPSendResult{
 			ComponentSapCode: consumption.MrComponentSapCode,
 			DosingUnit:       consumption.DosingUnit,
@@ -114,24 +123,27 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 		}
 
 		// Generar XML
+		log.Printf("🔧 Generando XML para consumo %s...", consumption.MrComponentSapCode)
 		xmlData, err := xml.MarshalIndent(payload, "", "    ")
 		if err != nil {
-			log.Printf("Error generando XML para consumo %s: %v", consumption.MrComponentSapCode, err)
+			log.Printf("❌ Error generando XML para consumo %s: %v", consumption.MrComponentSapCode, err)
 			result.ErrorMessage = fmt.Sprintf("Error generando XML: %v", err)
 			results = append(results, result)
 			continue
 		}
+		log.Printf("✅ XML generado correctamente para consumo %s", consumption.MrComponentSapCode)
 
 		// Agregar header XML
 		xmlString := `<?xml version="1.0" encoding="UTF-8"?>` + "\n" + string(xmlData)
 
-		log.Printf("📤 Enviando a SAP: %s - Componente: %s - Dosificador: %s", sapOrderCode, consumption.MrComponentSapCode, consumption.DosingUnit)
-		log.Printf("XML: %s", xmlString)
+		log.Printf("📤 [%d/%d] Enviando a SAP: Orden=%s, Componente=%s, Dosificador=%s", i+1, len(consumptions), sapOrderCode, consumption.MrComponentSapCode, consumption.DosingUnit)
+		log.Printf("📄 XML generado (primeros 200 chars): %s...", xmlString[:min(200, len(xmlString))])
 
 		// Crear request
+		log.Printf("🔧 Creando HTTP request para consumo %s...", consumption.MrComponentSapCode)
 		req, err := http.NewRequest("POST", sapURL, bytes.NewBufferString(xmlString))
 		if err != nil {
-			log.Printf("Error creando request para consumo %s: %v", consumption.MrComponentSapCode, err)
+			log.Printf("❌ Error creando request para consumo %s: %v", consumption.MrComponentSapCode, err)
 			result.ErrorMessage = fmt.Sprintf("Error creando request: %v", err)
 			results = append(results, result)
 			continue
@@ -140,15 +152,17 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 		// Headers
 		req.Header.Set("Content-Type", "application/xml")
 		req.SetBasicAuth(username, password)
+		log.Printf("🔐 Autenticación Basic Auth configurada para consumo %s", consumption.MrComponentSapCode)
 
 		// Enviar request
+		log.Printf("📡 Enviando POST request a SAP para consumo %s...", consumption.MrComponentSapCode)
 		client := &http.Client{
 			Timeout: 30 * time.Second,
 		}
 
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("Error enviando a SAP para consumo %s: %v", consumption.MrComponentSapCode, err)
+			log.Printf("❌ Error de conexión enviando a SAP para consumo %s: %v", consumption.MrComponentSapCode, err)
 			result.ErrorMessage = fmt.Sprintf("Error de conexión: %v", err)
 			results = append(results, result)
 			continue
@@ -156,9 +170,10 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 		defer resp.Body.Close()
 
 		result.StatusCode = resp.StatusCode
+		log.Printf("📥 Respuesta recibida de SAP para consumo %s: Status=%d", consumption.MrComponentSapCode, resp.StatusCode)
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			log.Printf("✅ Consumo %s enviado exitosamente a SAP (Status: %d)", consumption.MrComponentSapCode, resp.StatusCode)
+			log.Printf("✅ [%d/%d] Consumo %s enviado exitosamente a SAP (Status: %d)", i+1, len(consumptions), consumption.MrComponentSapCode, resp.StatusCode)
 			result.Success = true
 		} else {
 			// Leer el cuerpo de la respuesta para obtener detalles del error
@@ -167,7 +182,7 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 			if errorBody == "" {
 				errorBody = "Sin detalles del error"
 			}
-			log.Printf("❌ Error enviando consumo %s a SAP (Status: %d): %s", consumption.MrComponentSapCode, resp.StatusCode, errorBody)
+			log.Printf("❌ [%d/%d] Error enviando consumo %s a SAP (Status: %d): %s", i+1, len(consumptions), consumption.MrComponentSapCode, resp.StatusCode, errorBody)
 			result.ErrorMessage = fmt.Sprintf("Error HTTP %d: %s", resp.StatusCode, errorBody)
 		}
 
@@ -185,11 +200,29 @@ func (s *service) DosingConsumptionSendToSAP(factory string, prodline string, sa
 		}
 	}
 
+	log.Printf("📊 ===== RESUMEN DE ENVÍO A SAP =====")
+	log.Printf("✅ Exitosos: %d", successCount)
+	log.Printf("❌ Fallidos: %d", errorCount)
+	log.Printf("📋 Total procesados: %d", len(results))
+
 	if errorCount > 0 {
 		log.Printf("⚠️ Se enviaron %d consumos exitosamente, pero %d fallaron", successCount, errorCount)
+		for i, r := range results {
+			if !r.Success {
+				log.Printf("  ❌ [%d] %s (%s): %s", i+1, r.ComponentSapCode, r.DosingUnit, r.ErrorMessage)
+			}
+		}
 		return results, fmt.Errorf("se enviaron %d consumos exitosamente, pero %d fallaron", successCount, errorCount)
 	}
 
 	log.Printf("✅ Todos los consumos (%d) fueron enviados exitosamente a SAP", successCount)
+	log.Println("🚀 ===== FIN OrderConsumptionSummaryToSAP =====")
 	return results, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

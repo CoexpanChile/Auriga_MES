@@ -204,6 +204,9 @@ func (h *handler) OrderConsumptionCalculate(c echo.Context) error {
 }
 
 func (h *handler) OrderConsumptionSummaryToSAP(c echo.Context) error {
+	log.Println("🚀 ===== INICIANDO OrderConsumptionSummaryToSAP =====")
+	log.Println("📥 Request recibido en /sap/orderConsump/CalcToSAP")
+	
 	u := new(mhOrderConsumption)
 	u.Factory = c.Request().Header.Get("Factory")
 	u.ProdLine = c.Request().Header.Get("ProdLine")
@@ -214,12 +217,15 @@ func (h *handler) OrderConsumptionSummaryToSAP(c echo.Context) error {
 	workdayID := c.Request().Header.Get("WorkdayID")
 	turno := c.Request().Header.Get("Turno")
 
-	log.Println("Factory", u.Factory)
-	log.Println("ProdLine", u.ProdLine)
-	log.Println("SapCode", u.SapCode)
-	log.Println("SapOrderCode", u.SapOrderCode)
-	log.Println("WorkdayID", workdayID)
-	log.Println("Turno", turno)
+	log.Println("📋 Headers recibidos:")
+	log.Println("  Factory:", u.Factory)
+	log.Println("  ProdLine:", u.ProdLine)
+	log.Println("  SapCode:", u.SapCode)
+	log.Println("  SapOrderCode:", u.SapOrderCode)
+	log.Println("  StartDate:", startDateStr)
+	log.Println("  EndDate:", endDateStr)
+	log.Println("  WorkdayID:", workdayID)
+	log.Println("  Turno:", turno)
 
 	// Parsear fechas
 	var startDate, endDate *time.Time
@@ -251,18 +257,23 @@ func (h *handler) OrderConsumptionSummaryToSAP(c echo.Context) error {
 	}
 
 	// Llamar al servicio para enviar a SAP
+	log.Println("🔄 Llamando a servicio DosingConsumptionSendToSAP...")
 	results, err := h.service.DosingConsumptionSendToSAP(u.Factory, u.ProdLine, u.SapOrderCode, startDate, endDate, workdayID, turno)
 	if err != nil {
-		log.Printf("Error enviando consumos a SAP: %v", err)
+		log.Printf("❌ Error en servicio DosingConsumptionSendToSAP: %v", err)
 		// Incluso si hay errores, devolver los resultados para que el frontend pueda mostrar detalles
 		if results != nil && len(results) > 0 {
+			log.Printf("📤 Devolviendo resultados parciales: %d resultados", len(results))
 			return c.JSON(http.StatusPartialContent, map[string]interface{}{
 				"message": err.Error(),
 				"results": results,
 			})
 		}
+		log.Printf("❌ No hay resultados para devolver, error completo: %v", err)
 		return c.JSON(http.StatusInternalServerError, responseMessage{Message: fmt.Sprintf("Error al enviar consumos a SAP: %v", err)})
 	}
+	
+	log.Printf("✅ Servicio completado exitosamente, devolviendo %d resultados", len(results))
 
 	// Contar éxitos y errores
 	successCount := 0

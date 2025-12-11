@@ -890,22 +890,28 @@ function MaterialsConsumablesPage() {
 
   // Función para enviar consumos a SAP
   const handleSendToSAP = async () => {
+    debug.log('🔘 [handleSendToSAP] Botón clicado - Iniciando envío a SAP')
+    
     if (!selectedOrder || !selectedLine) {
+      debug.log('❌ [handleSendToSAP] Error: No hay orden o línea seleccionada')
       showError('Selecciona una orden y línea primero')
       return
     }
 
     if (!consumptions || consumptions.length === 0) {
+      debug.log('❌ [handleSendToSAP] Error: No hay consumos para enviar')
       showError('No hay consumos para enviar a SAP. Primero calcula los consumos.')
       return
     }
 
     if (!ofStartDateTime || !ofEndDateTime) {
+      debug.log('❌ [handleSendToSAP] Error: Fechas no configuradas')
       showError('Las fechas de Inicio OF y Fin OF deben estar configuradas antes de enviar a SAP')
       return
     }
 
     try {
+      debug.log('✅ [handleSendToSAP] Validaciones pasadas, iniciando envío...')
       setSendingToSAP(true)
       clearError()
 
@@ -928,19 +934,25 @@ function MaterialsConsumablesPage() {
         'Turno': 'T1' // Valor por defecto, se puede hacer configurable
       }
 
-      debug.log('📤 Enviando consumos a SAP:', {
+      debug.log('📤 [handleSendToSAP] Enviando consumos a SAP:', {
         factory,
         prodLine,
         orderNumber: selectedOrder.OrderNumber,
         consumptionsCount: consumptions.length,
+        startDate: headers.StartDate,
+        endDate: headers.EndDate,
         headers
       })
+
+      console.log('🚀 [handleSendToSAP] Llamando a API:', '/sap/orderConsump/CalcToSAP')
+      console.log('🚀 [handleSendToSAP] Headers:', headers)
 
       const response = await api.get('/sap/orderConsump/CalcToSAP', {
         headers: headers,
       })
 
-      debug.log('✅ Respuesta de SAP:', response)
+      console.log('✅ [handleSendToSAP] Respuesta recibida:', response)
+      debug.log('✅ [handleSendToSAP] Respuesta de SAP:', response)
 
       // Procesar respuesta detallada
       const results = response?.results || []
