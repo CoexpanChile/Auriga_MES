@@ -22,3 +22,4 @@ export function DosifierManagerModal({ isOpen, onClose, line, onSave }) {
     </div>
   )
 }
+

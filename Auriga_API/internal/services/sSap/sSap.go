@@ -39,3 +39,4 @@ func New(repositoryAss rAssets.Repository, repositoryOrd rLineOrders.Repository,
 		repositoryInflux: repositoryInflux,
 	}
 }
+

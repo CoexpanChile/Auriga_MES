@@ -786,19 +786,25 @@ function MaterialsConsumablesPage() {
         c.ComponentSapCode && c.ComponentSapCode.trim() !== ''
       )
       
-      // Debug: Verificar si las fechas están presentes
-      console.log('📅 Consumos cargados con fechas (DETALLADO):', filteredConsumptions.map(c => ({
-        ComponentSapCode: c.ComponentSapCode,
-        CreatedAt: c.CreatedAt,
-        UpdatedAt: c.UpdatedAt,
-        CreatedAtType: typeof c.CreatedAt,
-        UpdatedAtType: typeof c.UpdatedAt,
-        hasCreatedAt: !!c.CreatedAt,
-        hasUpdatedAt: !!c.UpdatedAt,
-        CreatedAtValue: c.CreatedAt ? String(c.CreatedAt) : 'null/undefined',
-        UpdatedAtValue: c.UpdatedAt ? String(c.UpdatedAt) : 'null/undefined',
-        fullObject: c
-      })))
+      // Debug: Verificar si las fechas están presentes (solo en desarrollo)
+      if (isDev && filteredConsumptions.length > 0) {
+        const firstConsumption = filteredConsumptions[0]
+        debug.log('📅 Consumos cargados:', {
+          total: filteredConsumptions.length,
+          firstConsumption: {
+            ComponentSapCode: firstConsumption.ComponentSapCode,
+            hasCreatedAt: !!firstConsumption.CreatedAt,
+            hasUpdatedAt: !!firstConsumption.UpdatedAt,
+            hasStartDate: !!firstConsumption.StartDate,
+            hasEndDate: !!firstConsumption.EndDate,
+            allKeys: Object.keys(firstConsumption),
+            CreatedAt: firstConsumption.CreatedAt,
+            UpdatedAt: firstConsumption.UpdatedAt,
+            StartDate: firstConsumption.StartDate,
+            EndDate: firstConsumption.EndDate
+          }
+        })
+      }
       
       setConsumptions(filteredConsumptions)
       setLastUpdate(new Date())
@@ -1126,6 +1132,19 @@ function MaterialsConsumablesPage() {
         'SapComponentCode': formData.ComponentSapCode.trim()
       }
       
+      // Agregar fechas de inicio y fin de OF si están disponibles
+      if (ofStartDateTime && ofEndDateTime) {
+        const startDateISO = new Date(ofStartDateTime).toISOString()
+        const endDateISO = new Date(ofEndDateTime).toISOString()
+        addHeaders['StartDate'] = startDateISO
+        addHeaders['EndDate'] = endDateISO
+        
+        debug.log('📅 Agregando fechas de Inicio/Fin OF al editar consumo:', {
+          startDate: startDateISO,
+          endDate: endDateISO
+        })
+      }
+      
       await api.get('/sap/orderConsump/add', {
         headers: addHeaders,
       })
@@ -1415,6 +1434,21 @@ function MaterialsConsumablesPage() {
         'SapComponentCode': declarationForm.componentSapCode.trim()
       }
       
+      // Agregar fechas de inicio y fin de OF si están disponibles
+      if (ofStartDateTime && ofEndDateTime) {
+        const startDateISO = new Date(ofStartDateTime).toISOString()
+        const endDateISO = new Date(ofEndDateTime).toISOString()
+        headers['StartDate'] = startDateISO
+        headers['EndDate'] = endDateISO
+        
+        debug.log('📅 Agregando fechas de Inicio/Fin OF a la declaración:', {
+          startDate: startDateISO,
+          endDate: endDateISO
+        })
+      } else {
+        debug.log('⚠️ No hay fechas de Inicio/Fin OF disponibles para la declaración')
+      }
+      
       // Asegurar que no haya valores undefined o null
       Object.keys(headers).forEach(key => {
         if (headers[key] === undefined || headers[key] === null) {
@@ -1524,10 +1558,17 @@ function MaterialsConsumablesPage() {
           message: backendErr.message,
           status: backendErr.status,
           response: backendErr.response,
-          component: componentCode
+          component: componentCode,
+          headersEnviados: headers,
+          tieneFechas: !!(headers.StartDate && headers.EndDate)
         })
         
-        showError(backendErr.message && backendErr.message.includes('Registro no insertado') ? 'El backend no pudo procesar la declaración' : 'Error al comunicarse con el backend')
+        // Si el error es 500 y tenemos fechas, podría ser que el backend no las acepta todavía
+        if (backendErr.status === 500 && headers.StartDate && headers.EndDate) {
+          debug.warn('⚠️ El backend rechazó la petición con fechas. Verificar si el endpoint /sap/orderConsump/add acepta StartDate y EndDate.')
+        }
+        
+        showError(backendErr.message && backendErr.message.includes('Registro no insertado') ? 'El backend no pudo procesar la declaración. Verifique que el backend acepte los campos StartDate y EndDate.' : 'Error al comunicarse con el backend')
       }
 
       // Limpiar formulario
@@ -1670,9 +1711,8 @@ function MaterialsConsumablesPage() {
 
   // Formatear fecha/hora para declaraciones (formato: YYYY-MM-DD HH:mm:ss.SSS +TZ)
   const formatConsumptionDateTime = (date) => {
-    // Manejar null, undefined, o string vacío
+    // Manejar null, undefined, o string vacío (comportamiento esperado, no requiere warning)
     if (!date || date === 'null' || date === 'undefined' || date === '' || (typeof date === 'string' && date.trim() === '')) {
-      debug.warn('⚠️ formatConsumptionDateTime recibió fecha vacía/null/undefined:', date)
       return null // Retornar null para que el componente no muestre nada
     }
     
@@ -2901,21 +2941,7 @@ function MaterialsConsumablesPage() {
                               // Comparar como strings para evitar problemas de tipo
                               const hopperDosifierId = String(hopper.dosifierId)
                               const selectedDosifierId = String(declarationForm.dosifierId)
-                              const matches = hopperDosifierId === selectedDosifierId
-                              
-                              // Debug en desarrollo
-                              if (isDev && declarationForm.dosifierId) {
-                                debug.log('🔍 Filtrando hopper:', {
-                                  hopperId: hopper.id,
-                                  hopperName: hopper.name,
-                                  hopperDosifierId,
-                                  selectedDosifierId,
-                                  matches,
-                                  allHoppers: hoppersFromAPI.map(h => ({ id: h.id, dosifierId: String(h.dosifierId) }))
-                                })
-                              }
-                              
-                              return matches
+                              return hopperDosifierId === selectedDosifierId
                             })
                             .map((hopper) => (
                               <option key={hopper.id} value={hopper.id}>
@@ -3078,59 +3104,41 @@ function MaterialsConsumablesPage() {
                                 </span>
                               </div>
                             )}
-                            {/* Fechas de inicio y fin de la declaración - Siempre mostrar para debug */}
+                            {/* Fechas de inicio y fin de la declaración */}
                             <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
                               {(() => {
-                                console.log('🔍 [RENDER] Procesando CreatedAt:', {
-                                  value: consumption.CreatedAt,
-                                  type: typeof consumption.CreatedAt,
-                                  isNull: consumption.CreatedAt === null,
-                                  isUndefined: consumption.CreatedAt === undefined,
-                                  truthy: !!consumption.CreatedAt
-                                })
-                                const startDate = formatConsumptionDateTime(consumption.CreatedAt)
-                                console.log('🔍 [RENDER] startDate formateado:', startDate)
+                                // Intentar múltiples campos posibles para la fecha de inicio
+                                // Primero del consumo individual, luego de la orden de fabricación como fallback
+                                const startDateValue = consumption.CreatedAt || consumption.StartDate || consumption.startDate || ofStartDateTime
+                                const startDate = formatConsumptionDateTime(startDateValue)
                                 return startDate ? (
                                   <div className="flex items-center gap-2">
                                     <span className="text-gray-500">Fecha/hora inicio:</span>
                                     <span className="text-gray-300 font-mono">
                                       {startDate}
                                     </span>
+                                    {!consumption.CreatedAt && !consumption.StartDate && ofStartDateTime && (
+                                      <span className="text-xs text-yellow-500">(OF)</span>
+                                    )}
                                   </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 text-yellow-500">
-                                    <span>⚠️ Fecha/hora inicio no disponible</span>
-                                    <span className="text-xs text-gray-600">
-                                      (CreatedAt: {consumption.CreatedAt === null ? 'null' : consumption.CreatedAt === undefined ? 'undefined' : String(consumption.CreatedAt)})
-                                    </span>
-                                  </div>
-                                )
+                                ) : null
                               })()}
                               {(() => {
-                                console.log('🔍 [RENDER] Procesando UpdatedAt:', {
-                                  value: consumption.UpdatedAt,
-                                  type: typeof consumption.UpdatedAt,
-                                  isNull: consumption.UpdatedAt === null,
-                                  isUndefined: consumption.UpdatedAt === undefined,
-                                  truthy: !!consumption.UpdatedAt
-                                })
-                                const endDate = formatConsumptionDateTime(consumption.UpdatedAt)
-                                console.log('🔍 [RENDER] endDate formateado:', endDate)
+                                // Intentar múltiples campos posibles para la fecha de fin
+                                // Primero del consumo individual, luego de la orden de fabricación como fallback
+                                const endDateValue = consumption.UpdatedAt || consumption.EndDate || consumption.endDate || ofEndDateTime
+                                const endDate = formatConsumptionDateTime(endDateValue)
                                 return endDate ? (
                                   <div className="flex items-center gap-2">
                                     <span className="text-gray-500">Fecha/hora fin:</span>
                                     <span className="text-gray-300 font-mono">
                                       {endDate}
                                     </span>
+                                    {!consumption.UpdatedAt && !consumption.EndDate && ofEndDateTime && (
+                                      <span className="text-xs text-yellow-500">(OF)</span>
+                                    )}
                                   </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 text-yellow-500">
-                                    <span>⚠️ Fecha/hora fin no disponible</span>
-                                    <span className="text-xs text-gray-600">
-                                      (UpdatedAt: {consumption.UpdatedAt === null ? 'null' : consumption.UpdatedAt === undefined ? 'undefined' : String(consumption.UpdatedAt)})
-                                    </span>
-                                  </div>
-                                )
+                                ) : null
                               })()}
                             </div>
                           </div>
@@ -3325,4 +3333,5 @@ function MaterialsConsumablesPage() {
 }
 
 export default MaterialsConsumablesPage // Componente ya migrado desde MaterialsConsumablesPage
+
 

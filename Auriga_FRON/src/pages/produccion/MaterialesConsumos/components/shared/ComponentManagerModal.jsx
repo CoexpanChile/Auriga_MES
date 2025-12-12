@@ -22,3 +22,4 @@ export function ComponentManagerModal({ isOpen, onClose, line, onSave }) {
     </div>
   )
 }
+

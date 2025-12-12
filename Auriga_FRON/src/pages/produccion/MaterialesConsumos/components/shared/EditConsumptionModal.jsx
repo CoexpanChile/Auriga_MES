@@ -22,3 +22,4 @@ export function EditConsumptionModal({ isOpen, onClose, consumption, onSave }) {
     </div>
   )
 }
+

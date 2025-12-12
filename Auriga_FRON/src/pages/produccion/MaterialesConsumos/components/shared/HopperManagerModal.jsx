@@ -22,3 +22,4 @@ export function HopperManagerModal({ isOpen, onClose, line, onSave }) {
     </div>
   )
 }
+
